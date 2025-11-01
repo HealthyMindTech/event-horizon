@@ -48,7 +48,10 @@ class EventPacket(Protocol):
     height: int
     t0: int
     t1: int
-    count: int
+
+    @property
+    def count(self) -> int:
+        ...
 
     def as_numpy(self) -> EventArray:
         """Return a struct-of-arrays view of the packet's events."""
