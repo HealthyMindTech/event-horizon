@@ -116,7 +116,7 @@ def main() -> None:
     # Enforce playback speed via dropping:
     pacer = Pacer(speed=args.speed, force_speed=args.force_speed)
 
-    cv2.namedWindow("Evio Smoke", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("Evio Player", cv2.WINDOW_NORMAL)
     for batch_range in pacer.pace(src.ranges()):
         window = get_window(
             src.event_words,
@@ -127,7 +127,7 @@ def main() -> None:
         frame = get_frame(window)
         draw_hud(frame, pacer, batch_range)
 
-        cv2.imshow("Evio Smoke", frame)
+        cv2.imshow("Evio Player", frame)
 
         if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
             break
