@@ -41,6 +41,7 @@ Minimal Python library for standardized handling of event camera data.
 ---
 
 ## Quick start using UV
+If not already installed, install UV (instructions [here](https://docs.astral.sh/uv/getting-started/installation/)) \
 Clone the repo and in the repo root run
 
 ```bash
