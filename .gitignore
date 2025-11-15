@@ -4,3 +4,7 @@ __pycache__/
 .venv
 
 /data
+
+# Large data files (use external storage or Git LFS)
+*.dat
+!drone_narrow_blades.dat
