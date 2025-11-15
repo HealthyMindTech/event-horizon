@@ -28,6 +28,9 @@ clustering:
   initial:
     eps: 6 # Maximum distance between points in a cluster (pixels)
     min_samples: 10 # Minimum number of events to form a cluster
+    window_us: 20000 # Duration of initial window in microseconds (20ms)
+    min_cluster_events: 300 # Minimum events per cluster to be considered valid
+    max_y_spread: 5.0 # Maximum y-axis spread (std dev) to filter out diffuse clusters
 
   # Temporal tracking
   temporal:
@@ -86,7 +89,7 @@ presets:
     data:
       input_file: "drone_idle.dat"
       start_time_sec: 2.0 # Start earlier to catch propellers that might appear later
-      duration_sec: 0.2 # Longer duration to see all propellers over time
+      duration_sec: 0.06 # Reduced by 70% from 0.2s
       polarity: -1
     hot_pixel:
       threshold: 100
@@ -94,6 +97,9 @@ presets:
       initial:
         eps: 6
         min_samples: 10
+        window_us: 20000
+        min_cluster_events: 300
+        max_y_spread: 5.0
       temporal:
         assignment_distance: 15
         min_cluster_size: 5 # Lower threshold to keep sparse propellers
@@ -116,6 +122,9 @@ presets:
       initial:
         eps: 8 # May need larger eps if fan is farther/larger
         min_samples: 15
+        window_us: 20000
+        min_cluster_events: 300
+        max_y_spread: 5.0
       temporal:
         assignment_distance: 20 # May need larger distance
         min_cluster_size: 10
@@ -139,6 +148,9 @@ presets:
       initial:
         eps: 6
         min_samples: 10
+        window_us: 20000
+        min_cluster_events: 300
+        max_y_spread: 5.0
       temporal:
         assignment_distance: 15
         min_cluster_size: 8

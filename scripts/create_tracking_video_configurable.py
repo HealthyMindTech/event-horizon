@@ -87,14 +87,20 @@ class BladeCluster:
         self.color = (
             color if color is not None else plt.cm.tab10(cluster_id % 10)
         )
+        # Store initial cluster region for distance calculations
+        self.initial_region_events = initial_events[
+            :, :2
+        ].copy()  # Only x, y coordinates
         # Historical data for stable center calculation
         self.center_history = []  # List of (x, y, slope, timestamp) tuples
         self.center_x = 0
         self.center_y = 0
+        self.max_history_size = 100  # Limit history to last 100 entries
         self.confidence = 0.0  # Confidence score based on line fit
         # Tracking history for plotting
         self.angle_history = []  # List of (timestamp, angle_deg)
         self.confidence_history = []  # List of (timestamp, confidence)
+        self.width_history = []  # List of (timestamp, width_pixels)
         # Persistence tracking
         self.last_event_time = (
             initial_events[:, 3].max() if len(initial_events) > 0 else 0
@@ -158,11 +164,18 @@ class BladeCluster:
             # Perfect line (no perpendicular variance) or too few points
             self.confidence = 1.0
 
-        # Record angle and confidence history
+        # Calculate blade width (95th - 5th percentile of x-values)
+        x_values = self.events[:, 0]
+        x_5th = np.percentile(x_values, 5)
+        x_95th = np.percentile(x_values, 95)
+        blade_width = x_95th - x_5th
+
+        # Record angle, confidence, and width history
         if len(self.events) > 0:
             current_timestamp = self.events[:, 3].max()
             self.angle_history.append((current_timestamp, self.angle_deg))
             self.confidence_history.append((current_timestamp, self.confidence))
+            self.width_history.append((current_timestamp, blade_width))
 
         # Calculate instantaneous center (midpoint of events)
         instant_center_x = np.mean(self.events[:, 0])
@@ -175,7 +188,13 @@ class BladeCluster:
                 (instant_center_x, instant_center_y, self.slope, timestamp)
             )
 
-        # Calculate stable center from history
+            # Limit history size to prevent unbounded growth
+            if len(self.center_history) > self.max_history_size:
+                self.center_history = self.center_history[
+                    -self.max_history_size :
+                ]
+
+        # Calculate stable center from history (simple mean)
         if len(self.center_history) > 0:
             centers = np.array([(h[0], h[1]) for h in self.center_history])
             self.center_x = np.mean(centers[:, 0])
@@ -208,8 +227,18 @@ class BladeCluster:
         return len(self.events)
 
     def distance_to_point(self, x, y):
-        """Calculate distance from point to cluster center."""
-        return np.sqrt((x - self.center_x) ** 2 + (y - self.center_y) ** 2)
+        """Calculate minimum distance from point to any event in the initial cluster region."""
+        if len(self.initial_region_events) == 0:
+            return float("inf")
+
+        # Calculate distance to every event in the initial cluster region
+        distances = np.sqrt(
+            (self.initial_region_events[:, 0] - x) ** 2
+            + (self.initial_region_events[:, 1] - y) ** 2
+        )
+
+        # Return minimum distance (distance to closest event in initial region)
+        return np.min(distances)
 
 
 class TemporalTracker:
@@ -226,6 +255,9 @@ class TemporalTracker:
         grace_period_us=5000,
         reinit_interval_us=2000,
         min_events_for_reinit=50,
+        initial_window_us=20000,
+        min_cluster_events=300,
+        max_cluster_y_spread=5.0,
     ):
         self.clusters = {}
         self.next_cluster_id = 0
@@ -251,8 +283,13 @@ class TemporalTracker:
         self.last_reinit_time_us = 0
         self.min_events_for_reinit = min_events_for_reinit
 
+        # Cluster quality filtering
+        self.initial_window_us = initial_window_us
+        self.min_cluster_events = min_cluster_events
+        self.max_cluster_y_spread = max_cluster_y_spread
+
     def initialize_from_events(self, events):
-        """Initialize clusters from initial batch of events."""
+        """Initialize clusters from initial batch of events with quality filtering."""
         if len(events) < 10:
             return
 
@@ -261,8 +298,11 @@ class TemporalTracker:
         db = DBSCAN(eps=self.initial_eps, min_samples=self.initial_min_samples)
         labels = db.fit_predict(coords)
 
-        # Create clusters from DBSCAN results
+        # Create clusters from DBSCAN results with quality filtering
         unique_labels = set(labels)
+        clusters_found = 0
+        clusters_filtered = 0
+
         for label in unique_labels:
             if label == -1:  # Skip noise
                 continue
@@ -270,10 +310,29 @@ class TemporalTracker:
             cluster_mask = labels == label
             cluster_events = events[cluster_mask]
 
-            if len(cluster_events) >= self.min_cluster_size:
+            # Apply quality filters
+            if len(cluster_events) < self.min_cluster_size:
+                continue
+
+            # Calculate cluster quality metrics
+            cluster_size = len(cluster_events)
+            y_spread = cluster_events[:, 1].std()
+
+            # Apply filters: minimum events and maximum y-spread
+            passes_min_events = cluster_size >= self.min_cluster_events
+            passes_y_spread = y_spread <= self.max_cluster_y_spread
+
+            clusters_found += 1
+            if passes_min_events and passes_y_spread:
                 cluster = BladeCluster(self.next_cluster_id, cluster_events)
                 self.clusters[self.next_cluster_id] = cluster
                 self.next_cluster_id += 1
+            else:
+                clusters_filtered += 1
+
+        print(
+            f"  Initialized {len(self.clusters)} valid clusters (filtered out {clusters_filtered})"
+        )
 
         if len(events) > 0:
             self.current_time_us = events[:, 3].max()
@@ -669,17 +728,28 @@ def main():
         print("Not enough events!")
         return
 
-    # Initialize tracker with first window of events
+    # Initialize tracker with first window of events (20ms window for better clustering)
+    init_window_us = config["clustering"]["initial"].get("window_us", 20000)
     init_end_time = start_time + init_window_us
     init_mask = filtered_events[:, 3] < init_end_time
     init_events = filtered_events[init_mask]
     remaining_events = filtered_events[~init_mask]
 
-    print(f"\nInitializing tracker with {len(init_events)} events...")
+    print(
+        f"\nInitializing tracker with {len(init_events)} events from {init_window_us / 1000:.1f}ms window..."
+    )
 
     # Center history window is 4x longer than event window for stability
     center_history_window_us = (
         config["clustering"]["temporal"]["window_duration_us"] * 4
+    )
+
+    # Get cluster quality filtering parameters
+    min_cluster_events = config["clustering"]["initial"].get(
+        "min_cluster_events", 300
+    )
+    max_cluster_y_spread = config["clustering"]["initial"].get(
+        "max_y_spread", 5.0
     )
 
     tracker = TemporalTracker(
@@ -702,9 +772,14 @@ def main():
         min_events_for_reinit=config["clustering"]["temporal"].get(
             "min_events_for_reinit", 50
         ),
+        initial_window_us=init_window_us,
+        min_cluster_events=min_cluster_events,
+        max_cluster_y_spread=max_cluster_y_spread,
+    )
+    print(
+        f"  Using quality filters: min_events={min_cluster_events}, max_y_spread={max_cluster_y_spread}"
     )
     tracker.initialize_from_events(init_events)
-    print(f"Initialized {len(tracker.clusters)} clusters")
 
     # Record initial cluster IDs for tracking
     initial_cluster_ids = list(tracker.clusters.keys())
@@ -778,8 +853,10 @@ def main():
     print(f"Events processed: {len(remaining_events)}")
     print(f"{'=' * 60}")
 
-    # Generate plots of angle and confidence over time for tracked blades
-    print(f"\nGenerating tracking plots...")
+    # Generate plots of angle, confidence, width, and RPM analysis
+    print(f"\n{'=' * 60}")
+    print(f"ROTATION RATE ANALYSIS")
+    print(f"{'=' * 60}")
 
     # Find clusters that were tracked throughout (prefer initial clusters)
     clusters_to_plot = []
@@ -796,7 +873,7 @@ def main():
 
     if len(clusters_to_plot) > 0:
         # Create figure with subplots
-        fig, axes = plt.subplots(3, 1, figsize=(14, 14))
+        fig, axes = plt.subplots(5, 1, figsize=(16, 20))
 
         # Plot raw angle over time
         ax1 = axes[0]
@@ -823,15 +900,38 @@ def main():
         ax2.axhline(y=0, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
         ax2.grid(True, alpha=0.3)
 
-        # Plot confidence over time
+        # Plot blade width over time
         ax3 = axes[2]
         ax3.set_title(
-            "Blade Confidence Over Time", fontsize=14, fontweight="bold"
+            "Blade Width Over Time (95th - 5th percentile)",
+            fontsize=14,
+            fontweight="bold",
         )
         ax3.set_xlabel("Time (ms)", fontsize=12)
-        ax3.set_ylabel("Confidence (0-1)", fontsize=12)
-        ax3.set_ylim(-0.05, 1.05)
+        ax3.set_ylabel("Width (pixels)", fontsize=12)
         ax3.grid(True, alpha=0.3)
+
+        # Plot confidence over time
+        ax4 = axes[3]
+        ax4.set_title(
+            "Blade Confidence Over Time", fontsize=14, fontweight="bold"
+        )
+        ax4.set_xlabel("Time (ms)", fontsize=12)
+        ax4.set_ylabel("Confidence", fontsize=12)
+        ax4.set_ylim(-0.05, 1.05)
+        ax4.grid(True, alpha=0.3)
+
+        # Plot RPM visualization (sin wave with zero crossings)
+        ax5 = axes[4]
+        ax5.set_title(
+            "RPM Calculation - Sin Wave Zero Crossings",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax5.set_xlabel("Time (ms)", fontsize=12)
+        ax5.set_ylabel("sin(2×angle)", fontsize=12)
+        ax5.axhline(y=0, color="black", linestyle="-", linewidth=1.5, alpha=0.8)
+        ax5.grid(True, alpha=0.3)
 
         # Plot each cluster
         for cluster in clusters_to_plot[:6]:  # Limit to 6 for readability
@@ -942,6 +1042,114 @@ def main():
                         zorder=10,
                     )
 
+                # Calculate RPM from sin wave periodicity
+                # Detect zero crossings in sin wave (upward crossings)
+                zero_crossings = []
+                for i in range(len(sin_values) - 1):
+                    if sin_values[i] < 0 and sin_values[i + 1] >= 0:
+                        # Linear interpolation to find exact crossing time
+                        t1, t2 = angle_times[i], angle_times[i + 1]
+                        s1, s2 = sin_values[i], sin_values[i + 1]
+                        crossing_time = t1 + (t2 - t1) * (-s1) / (s2 - s1)
+                        zero_crossings.append(crossing_time)
+
+                if len(zero_crossings) >= 2:
+                    # Calculate periods between crossings
+                    periods_ms = np.diff(zero_crossings)
+                    if len(periods_ms) > 0:
+                        mean_period_ms = np.mean(periods_ms)
+                        mean_period_s = mean_period_ms / 1000.0
+                        freq_hz = (
+                            1.0 / mean_period_s if mean_period_s > 0 else 0
+                        )
+                        rpm = freq_hz * 60
+                        print(f"  RPM calculation (from sin period):")
+                        print(
+                            f"    Zero crossings detected: {len(zero_crossings)}"
+                        )
+                        print(f"    Mean period: {mean_period_ms:.3f} ms")
+                        print(f"    Frequency: {freq_hz:.2f} Hz")
+                        print(f"    RPM: {rpm:.0f}")
+                else:
+                    print(
+                        f"  RPM calculation: Not enough zero crossings detected ({len(zero_crossings)})"
+                    )
+
+                # Visualize RPM calculation on ax5
+                # Plot sin wave with zero crossings marked
+                ax5.plot(
+                    angle_times,
+                    sin_values,
+                    color=cluster.color,
+                    linewidth=2,
+                    alpha=0.6,
+                    label=f"Blade ID{cluster.id}",
+                )
+
+                # Mark zero crossings
+                if len(zero_crossings) >= 2:
+                    # Find closest points to crossings for plotting
+                    crossing_y = np.zeros(len(zero_crossings))
+                    ax5.scatter(
+                        zero_crossings,
+                        crossing_y,
+                        color=cluster.color,
+                        s=100,
+                        marker="o",
+                        edgecolors="black",
+                        linewidths=2,
+                        zorder=10,
+                        label=f"ID{cluster.id} crossings ({len(zero_crossings)})",
+                    )
+
+                    # Draw period lines between consecutive crossings
+                    for i in range(len(zero_crossings) - 1):
+                        ax5.plot(
+                            [zero_crossings[i], zero_crossings[i + 1]],
+                            [0.5, 0.5],
+                            color=cluster.color,
+                            linewidth=2,
+                            alpha=0.4,
+                        )
+                        # Annotate period
+                        mid_point = (
+                            zero_crossings[i] + zero_crossings[i + 1]
+                        ) / 2
+                        period = zero_crossings[i + 1] - zero_crossings[i]
+                        if i < 3:  # Only annotate first few to avoid clutter
+                            ax5.text(
+                                mid_point,
+                                0.6,
+                                f"{period:.2f}ms",
+                                ha="center",
+                                fontsize=8,
+                                color=cluster.color,
+                            )
+
+            # Extract blade width history
+            if len(cluster.width_history) > 0:
+                width_times = np.array(
+                    [t / 1000.0 for t, _ in cluster.width_history]
+                )
+                width_values = np.array([w for _, w in cluster.width_history])
+                ax3.plot(
+                    width_times,
+                    width_values,
+                    marker="o",
+                    markersize=2,
+                    linewidth=1.5,
+                    label=f"Blade ID{cluster.id}",
+                    color=cluster.color,
+                )
+
+                # Print width statistics
+                print(f"  Blade width analysis:")
+                print(f"    Mean width: {np.mean(width_values):.2f} pixels")
+                print(f"    Std dev: {np.std(width_values):.2f} pixels")
+                print(
+                    f"    Range: [{np.min(width_values):.2f}, {np.max(width_values):.2f}] pixels"
+                )
+
             # Extract confidence history
             if len(cluster.confidence_history) > 0:
                 conf_times = np.array(
@@ -950,7 +1158,7 @@ def main():
                 conf_values = np.array(
                     [c for _, c in cluster.confidence_history]
                 )
-                ax3.plot(
+                ax4.plot(
                     conf_times,
                     conf_values,
                     marker="o",
@@ -963,12 +1171,16 @@ def main():
         ax1.legend(loc="best", fontsize=10)
         ax2.legend(loc="best", fontsize=10)
         ax3.legend(loc="best", fontsize=10)
+        ax4.legend(loc="best", fontsize=10)
+        ax5.legend(loc="upper right", fontsize=8)
+        ax5.set_ylim(-1.2, 1.2)
 
         plt.tight_layout()
         plot_filename = "blade_tracking_plots.png"
         plt.savefig(plot_filename, dpi=150, bbox_inches="tight")
         plt.close(fig)
 
+        print(f"\n{'=' * 60}")
         print(f"Saved tracking plots to: {plot_filename}")
         print(f"Plotted {len(clusters_to_plot)} blade(s)")
     else:

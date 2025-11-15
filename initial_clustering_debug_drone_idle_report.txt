@@ -1,0 +1,311 @@
+Initial Clustering Debug Report
+==================================================
+
+Configuration: config/tracking_config.yaml
+Preset: drone_idle
+
+Data:
+  Input file: drone_idle.dat
+  Start time: 2.0s
+  Polarity: negative
+  Total events in window: 7671
+  Window duration: 20000μs
+
+DBSCAN Parameters:
+  eps: 6
+  min_samples: 10
+  min_cluster_size: 5
+
+Clustering Results:
+  Total clusters found: 47
+  Valid clusters: 4
+  Filtered out: 43
+  Noise points: 561 (7.3%)
+
+Filtering Criteria:
+  Minimum events: 300
+  Maximum y-spread: 5.0
+
+Cluster Details:
+
+  Cluster 0 [VALID ✓]:
+    Events: 1345
+    Center: (633.5, 313.4)
+    Spread: σx=8.8, σy=2.6
+    Density: 14.89 events/px²
+
+  Cluster 1 [FILTERED ✗]:
+    Events: 990
+    Center: (24.7, 644.2)
+    Spread: σx=16.2, σy=38.7
+    Density: 0.39 events/px²
+
+  Cluster 2 [FILTERED ✗]:
+    Events: 61
+    Center: (39.2, 343.6)
+    Spread: σx=7.2, σy=8.8
+    Density: 0.24 events/px²
+
+  Cluster 3 [FILTERED ✗]:
+    Events: 854
+    Center: (35.3, 509.9)
+    Spread: σx=25.5, σy=39.6
+    Density: 0.21 events/px²
+
+  Cluster 4 [FILTERED ✗]:
+    Events: 34
+    Center: (72.9, 333.3)
+    Spread: σx=5.5, σy=6.1
+    Density: 0.26 events/px²
+
+  Cluster 5 [VALID ✓]:
+    Events: 589
+    Center: (572.7, 327.6)
+    Spread: σx=9.1, σy=0.9
+    Density: 17.37 events/px²
+
+  Cluster 6 [VALID ✓]:
+    Events: 1293
+    Center: (555.8, 309.5)
+    Spread: σx=8.7, σy=2.1
+    Density: 17.38 events/px²
+
+  Cluster 7 [VALID ✓]:
+    Events: 399
+    Center: (631.0, 329.8)
+    Spread: σx=10.4, σy=1.3
+    Density: 7.65 events/px²
+
+  Cluster 8 [FILTERED ✗]:
+    Events: 105
+    Center: (119.7, 626.8)
+    Spread: σx=9.3, σy=7.3
+    Density: 0.39 events/px²
+
+  Cluster 9 [FILTERED ✗]:
+    Events: 180
+    Center: (60.5, 384.8)
+    Spread: σx=14.4, σy=11.0
+    Density: 0.28 events/px²
+
+  Cluster 10 [FILTERED ✗]:
+    Events: 46
+    Center: (9.8, 377.1)
+    Spread: σx=5.5, σy=5.2
+    Density: 0.40 events/px²
+
+  Cluster 11 [FILTERED ✗]:
+    Events: 50
+    Center: (29.0, 216.5)
+    Spread: σx=5.7, σy=10.1
+    Density: 0.22 events/px²
+
+  Cluster 12 [FILTERED ✗]:
+    Events: 19
+    Center: (52.7, 297.3)
+    Spread: σx=3.9, σy=2.3
+    Density: 0.51 events/px²
+
+  Cluster 13 [FILTERED ✗]:
+    Events: 67
+    Center: (10.7, 218.9)
+    Spread: σx=7.5, σy=10.8
+    Density: 0.21 events/px²
+
+  Cluster 14 [FILTERED ✗]:
+    Events: 194
+    Center: (65.7, 702.0)
+    Spread: σx=15.0, σy=9.0
+    Density: 0.36 events/px²
+
+  Cluster 15 [FILTERED ✗]:
+    Events: 21
+    Center: (57.3, 244.8)
+    Spread: σx=4.9, σy=2.6
+    Density: 0.41 events/px²
+
+  Cluster 16 [FILTERED ✗]:
+    Events: 51
+    Center: (33.0, 319.8)
+    Spread: σx=6.6, σy=5.3
+    Density: 0.36 events/px²
+
+  Cluster 17 [FILTERED ✗]:
+    Events: 41
+    Center: (117.4, 605.5)
+    Spread: σx=7.8, σy=3.9
+    Density: 0.33 events/px²
+
+  Cluster 18 [FILTERED ✗]:
+    Events: 27
+    Center: (36.9, 679.0)
+    Spread: σx=3.5, σy=3.9
+    Density: 0.49 events/px²
+
+  Cluster 19 [FILTERED ✗]:
+    Events: 56
+    Center: (94.6, 645.4)
+    Spread: σx=7.8, σy=6.0
+    Density: 0.30 events/px²
+
+  Cluster 20 [FILTERED ✗]:
+    Events: 54
+    Center: (14.2, 399.3)
+    Spread: σx=6.4, σy=3.6
+    Density: 0.58 events/px²
+
+  Cluster 21 [FILTERED ✗]:
+    Events: 52
+    Center: (125.0, 655.8)
+    Spread: σx=6.2, σy=3.9
+    Density: 0.54 events/px²
+
+  Cluster 22 [FILTERED ✗]:
+    Events: 106
+    Center: (90.4, 670.9)
+    Spread: σx=9.4, σy=6.4
+    Density: 0.44 events/px²
+
+  Cluster 23 [FILTERED ✗]:
+    Events: 16
+    Center: (52.4, 455.9)
+    Spread: σx=2.6, σy=3.1
+    Density: 0.50 events/px²
+
+  Cluster 24 [FILTERED ✗]:
+    Events: 69
+    Center: (64.3, 424.0)
+    Spread: σx=10.5, σy=7.6
+    Density: 0.22 events/px²
+
+  Cluster 25 [FILTERED ✗]:
+    Events: 30
+    Center: (35.5, 455.1)
+    Spread: σx=5.2, σy=3.0
+    Density: 0.48 events/px²
+
+  Cluster 26 [FILTERED ✗]:
+    Events: 25
+    Center: (4.4, 320.2)
+    Spread: σx=2.1, σy=3.7
+    Density: 0.80 events/px²
+
+  Cluster 27 [FILTERED ✗]:
+    Events: 27
+    Center: (113.8, 579.1)
+    Spread: σx=4.0, σy=4.5
+    Density: 0.38 events/px²
+
+  Cluster 28 [FILTERED ✗]:
+    Events: 16
+    Center: (90.2, 593.8)
+    Spread: σx=2.8, σy=3.4
+    Density: 0.41 events/px²
+
+  Cluster 29 [FILTERED ✗]:
+    Events: 10
+    Center: (99.8, 486.2)
+    Spread: σx=2.7, σy=1.2
+    Density: 0.80 events/px²
+
+  Cluster 30 [FILTERED ✗]:
+    Events: 38
+    Center: (39.7, 284.4)
+    Spread: σx=4.3, σy=4.8
+    Density: 0.46 events/px²
+
+  Cluster 31 [FILTERED ✗]:
+    Events: 22
+    Center: (33.6, 407.3)
+    Spread: σx=3.2, σy=3.9
+    Density: 0.44 events/px²
+
+  Cluster 32 [FILTERED ✗]:
+    Events: 20
+    Center: (26.8, 269.4)
+    Spread: σx=4.5, σy=2.2
+    Density: 0.49 events/px²
+
+  Cluster 33 [FILTERED ✗]:
+    Events: 14
+    Center: (80.4, 541.1)
+    Spread: σx=3.2, σy=3.4
+    Density: 0.32 events/px²
+
+  Cluster 34 [FILTERED ✗]:
+    Events: 18
+    Center: (48.1, 572.6)
+    Spread: σx=4.3, σy=3.5
+    Density: 0.30 events/px²
+
+  Cluster 35 [FILTERED ✗]:
+    Events: 9
+    Center: (2.1, 630.9)
+    Spread: σx=1.4, σy=2.0
+    Density: 0.79 events/px²
+
+  Cluster 36 [FILTERED ✗]:
+    Events: 21
+    Center: (43.0, 219.6)
+    Spread: σx=3.6, σy=3.8
+    Density: 0.38 events/px²
+
+  Cluster 37 [FILTERED ✗]:
+    Events: 22
+    Center: (4.5, 353.3)
+    Spread: σx=2.9, σy=2.6
+    Density: 0.74 events/px²
+
+  Cluster 38 [FILTERED ✗]:
+    Events: 14
+    Center: (59.4, 306.9)
+    Spread: σx=2.2, σy=2.0
+    Density: 0.81 events/px²
+
+  Cluster 39 [FILTERED ✗]:
+    Events: 13
+    Center: (46.2, 262.9)
+    Spread: σx=1.4, σy=2.2
+    Density: 1.07 events/px²
+
+  Cluster 40 [FILTERED ✗]:
+    Events: 25
+    Center: (50.5, 444.0)
+    Spread: σx=5.0, σy=2.6
+    Density: 0.47 events/px²
+
+  Cluster 41 [FILTERED ✗]:
+    Events: 11
+    Center: (53.7, 626.5)
+    Spread: σx=2.3, σy=3.4
+    Density: 0.35 events/px²
+
+  Cluster 42 [FILTERED ✗]:
+    Events: 16
+    Center: (74.0, 524.8)
+    Spread: σx=3.8, σy=3.9
+    Density: 0.27 events/px²
+
+  Cluster 43 [FILTERED ✗]:
+    Events: 10
+    Center: (82.1, 560.1)
+    Spread: σx=2.8, σy=2.7
+    Density: 0.33 events/px²
+
+  Cluster 44 [FILTERED ✗]:
+    Events: 8
+    Center: (85.6, 338.5)
+    Spread: σx=1.6, σy=0.9
+    Density: 1.47 events/px²
+
+  Cluster 45 [FILTERED ✗]:
+    Events: 11
+    Center: (26.5, 337.5)
+    Spread: σx=3.0, σy=1.8
+    Density: 0.52 events/px²
+
+  Cluster 46 [FILTERED ✗]:
+    Events: 11
+    Center: (36.3, 240.0)
+    Spread: σx=2.8, σy=3.2
+    Density: 0.30 events/px²
