@@ -122,6 +122,123 @@ decoded_polarity = (raw_polarity > 0).astype(np.int8, copy=False)
 
 
 
+---
+
+## Drone Detection
+
+The repository includes a drone detection system that processes event camera data (`.dat` files) to detect drones and optionally track their propellers.
+
+### Algorithm Overview
+
+The drone detection pipeline consists of the following steps:
+
+1. **Event Accumulation**: Events from a time window (default 50ms) are accumulated into a frame, converting sparse event data into a dense image representation.
+
+2. **Motion Blob Detection**: 
+   - Binary thresholding is applied to identify regions with significant event activity
+   - Morphological operations (closing and opening) clean up the binary image
+   - Contours are extracted to identify potential objects
+
+3. **Drone Filtering**:
+   - **Area filtering**: Objects must be within a reasonable size range (default: 200-50000 pixels)
+   - **Compactness filtering**: Filters out sparse regions (like trees) by checking the density of events within bounding boxes
+   - **Spatial regularity check**: Analyzes the distribution of events using a grid-based approach to identify irregular patterns (trees) versus uniform patterns (drones)
+   - **Aspect ratio filtering**: Can filter out elongated objects (like planes) if needed
+
+4. **Detection Merging**: Nearby or overlapping detections are merged to handle cases where a rotating drone is detected as multiple objects.
+
+5. **Temporal Filtering**: 
+   - Maintains a history of detections across frames
+   - Filters out flickering false positives (like moving tree leaves) by requiring detections to appear consistently over time
+   - Only detections that appear in at least 40% of recent frames are kept
+
+6. **Propeller Detection** (optional, enabled with `--detect-propellers`):
+   - For each detected drone, analyzes the region of interest (ROI) to detect propellers
+   - Uses multiple detection methods:
+     - **HoughCircles**: Detects circular patterns
+     - **Ellipse fitting**: Detects elliptical patterns (propellers are typically horizontally elongated)
+   - **Propeller tracking**: Maintains identity of 4 propellers per drone across frames:
+     - Tracks each propeller's position and velocity
+     - Matches detections to tracked propellers using predicted positions
+     - Predicts positions for temporarily occluded propellers
+     - Labels propellers as P1, P2, P3, P4
+   - Ensures propellers are within the drone's bounding box
+   - Limits to maximum 4 propellers per drone
+
+### Running the Detection Script
+
+#### Basic Usage
+
+```bash
+# Display detection in real-time window
+uv run scripts/detection/detect_drone.py drone_moving.dat
+```
+
+#### Command-Line Options
+
+**Core Options:**
+- `--window WINDOW`: Window duration in milliseconds (default: 50ms)
+- `--speed SPEED`: Playback speed factor (default: 1.0, 1.0 = real-time)
+- `--force-speed`: Force playback speed by dropping frames if needed
+
+**Detection Parameters:**
+- `--min-area AREA`: Minimum detection area in pixels (default: 200)
+- `--max-area AREA`: Maximum detection area in pixels (default: 50000)
+- `--threshold THRESHOLD`: Event accumulation threshold (default: 30)
+- `--merge-distance DISTANCE`: Maximum distance to merge nearby detections in pixels (default: 80)
+- `--history-frames N`: Number of frames for temporal filtering (default: 5)
+- `--min-consistency RATIO`: Minimum consistency ratio for temporal filtering, 0-1 (default: 0.4)
+
+**Propeller Detection:**
+- `--detect-propellers`: Enable propeller detection and tracking (disabled by default)
+- `--propeller-min-radius RADIUS`: Minimum propeller radius in pixels (default: 5)
+- `--propeller-max-radius RADIUS`: Maximum propeller radius in pixels (default: 50)
+- `--show-propeller-debug`: Show debug visualization of propeller detection ROI
+
+**Output:**
+- `--output-video PATH`: Save detection video to file instead of displaying (e.g., `output.mp4`)
+- `--debug`: Print debug information to console
+
+#### Examples
+
+```bash
+# Basic detection with default settings
+uv run scripts/detection/detect_drone.py drone_moving.dat
+
+# Detection with propeller tracking enabled
+uv run scripts/detection/detect_drone.py drone_moving.dat --detect-propellers
+
+# Save detection video to file
+uv run scripts/detection/detect_drone.py drone_moving.dat --output-video detection.mp4
+
+# Detection with custom parameters and propeller tracking
+uv run scripts/detection/detect_drone.py drone_moving.dat \
+    --window 100 \
+    --min-area 500 \
+    --detect-propellers \
+    --output-video output.mp4
+
+# Faster playback with debug information
+uv run scripts/detection/detect_drone.py drone_moving.dat \
+    --speed 2.0 \
+    --debug
+```
+
+#### Output
+
+When displaying in a window:
+- **Green bounding boxes**: Detected drones
+- **Orange ellipses**: Detected propellers (if `--detect-propellers` is enabled)
+- **Labels**: "DRONE" for drones, "P1", "P2", "P3", "P4" for propellers
+- **HUD**: Shows detection count, propeller count, playback speed, and timing information
+
+When saving to video:
+- All visualizations are included in the output video
+- Frame rate is automatically calculated from window duration
+- No window is displayed (faster processing)
+
+---
+
 ## License
 MIT
 

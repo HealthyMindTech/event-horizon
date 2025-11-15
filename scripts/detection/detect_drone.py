@@ -1310,6 +1310,12 @@ def main() -> None:
         action="store_true",
         help="Enable propeller detection and tracking (disabled by default)",
     )
+    parser.add_argument(
+        "--output-video",
+        type=str,
+        default=None,
+        help="Output video file path (e.g., output.mp4). If specified, saves detection video instead of displaying.",
+    )
     args = parser.parse_args()
 
     # Initialize data source
@@ -1329,11 +1335,31 @@ def main() -> None:
     # Propeller tracker for maintaining identity across frames (only if enabled)
     propeller_tracker = PropellerTracker(max_distance=100.0, max_age=5) if args.detect_propellers else None
 
-    cv2.namedWindow("Drone Detection", cv2.WINDOW_NORMAL)
+    # Initialize video writer if output path is specified
+    video_writer = None
+    if args.output_video:
+        # Calculate frame rate based on window duration
+        fps = 1000.0 / args.window  # frames per second
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video_writer = cv2.VideoWriter(
+            args.output_video,
+            fourcc,
+            fps,
+            (src.width, src.height),
+        )
+        if not video_writer.isOpened():
+            print(f"Error: Could not open video writer for {args.output_video}")
+            return
+        print(f"Writing video to {args.output_video} at {fps:.2f} fps")
+    else:
+        cv2.namedWindow("Drone Detection", cv2.WINDOW_NORMAL)
 
     print(f"Processing {args.dat}")
     print(f"Window: {args.window}ms, Speed: {args.speed}x")
-    print("Press 'q' or ESC to quit")
+    if args.output_video:
+        print("Writing video file...")
+    else:
+        print("Press 'q' or ESC to quit")
 
     for batch_range in pacer.pace(src.ranges()):
         # Extract events in current window
@@ -1594,13 +1620,20 @@ def main() -> None:
             total_propellers,
         )
 
-        # Display
-        cv2.imshow("Drone Detection", display_frame)
+        # Write to video or display
+        if video_writer is not None:
+            video_writer.write(display_frame)
+        else:
+            cv2.imshow("Drone Detection", display_frame)
+            if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
+                break
 
-        if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
-            break
-
-    cv2.destroyAllWindows()
+    # Cleanup
+    if video_writer is not None:
+        video_writer.release()
+        print(f"Video saved to {args.output_video}")
+    else:
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
