@@ -1,0 +1,135 @@
+# Blade Tracking Configuration
+# Parameters for temporal propeller blade detection and tracking
+
+# Data source configuration
+data:
+  # Input file (relative to project root or absolute path)
+  input_file: "drone_idle.dat"
+
+  # Camera resolution
+  width: 1280
+  height: 720
+
+  # Time range to analyze
+  start_time_sec: 3.0 # Start time in seconds from beginning of recording
+  duration_sec: 0.01 # Duration to process in seconds (10ms)
+
+  # Polarity to analyze (-1 for negative, 1 for positive, null for both)
+  polarity: -1
+
+# Hot pixel filtering
+hot_pixel:
+  # Threshold for considering a pixel location as "hot" (too many events at exact same coord)
+  threshold: 100
+
+# Clustering parameters
+clustering:
+  # Initial clustering (DBSCAN for first window)
+  initial:
+    eps: 6 # Maximum distance between points in a cluster (pixels)
+    min_samples: 10 # Minimum number of events to form a cluster
+
+  # Temporal tracking
+  temporal:
+    assignment_distance: 15 # Maximum distance to assign event to existing cluster (pixels)
+    min_cluster_size: 8 # Minimum events per cluster to keep it active
+    window_duration_us: 750 # Rolling window duration in microseconds (0.75ms)
+
+# Region of interest (ROI)
+roi:
+  # Margin to add around detected clusters (pixels)
+  margin: 50
+
+  # Manual ROI override (set to null to auto-detect from clusters)
+  # Format: [x_min, x_max, y_min, y_max]
+  manual: null
+
+# Video generation
+video:
+  # Output video file
+  output_file: "blade_tracking_video.mp4"
+
+  # Video parameters
+  fps: 30
+  width: 1920
+  height: 1080
+  codec: "mp4v"
+
+  # How often to render frames (1 = every event, higher = skip events)
+  # Will be auto-calculated to generate ~10 seconds of video if null
+  frame_interval: null
+
+  # Visualization style
+  visualization:
+    background_color: "black"
+    event_size: 8 # Size of event dots
+    event_alpha: 0.7 # Transparency of events (0-1)
+    center_color: "red"
+    center_size: 3 # Radius of cluster center marker
+    line_color: "white"
+    line_width: 2.5
+    line_style: "dashed"
+    label_color: "yellow"
+    label_fontsize: 9
+    grid_alpha: 0.2
+    grid_color: "gray"
+
+# Dataset-specific presets
+presets:
+  drone_idle:
+    data:
+      input_file: "drone_idle.dat"
+      start_time_sec: 3.0
+      duration_sec: 0.02
+      polarity: -1
+    hot_pixel:
+      threshold: 100
+    clustering:
+      initial:
+        eps: 6
+        min_samples: 10
+      temporal:
+        assignment_distance: 15
+        min_cluster_size: 8
+        window_duration_us: 375
+    roi:
+      margin: 50
+
+  fan_const_rpm:
+    data:
+      input_file: "fan_const_rpm.dat"
+      start_time_sec: 1.0 # May need adjustment
+      duration_sec: 0.01
+      polarity: -1 # May need to try both polarities
+    hot_pixel:
+      threshold: 50 # May have fewer hot pixels
+    clustering:
+      initial:
+        eps: 8 # May need larger eps if fan is farther/larger
+        min_samples: 15
+      temporal:
+        assignment_distance: 20 # May need larger distance
+        min_cluster_size: 10
+        window_duration_us: 1000 # May need different window based on RPM
+    roi:
+      margin: 75 # Larger margin for potentially larger fan
+      manual: null # Auto-detect from data
+
+  drone_idle_both_polarities:
+    data:
+      input_file: "drone_idle.dat"
+      start_time_sec: 3.0
+      duration_sec: 0.01
+      polarity: null # Both polarities
+    hot_pixel:
+      threshold: 100
+    clustering:
+      initial:
+        eps: 6
+        min_samples: 10
+      temporal:
+        assignment_distance: 15
+        min_cluster_size: 8
+        window_duration_us: 750
+    roi:
+      margin: 50

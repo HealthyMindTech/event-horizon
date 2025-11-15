@@ -53,6 +53,7 @@ class DatFileSource:
 
         # time-sorted timestamps to match index space of build_windows
         t_sorted = t_raw[self._order].astype(np.int64, copy=False)
+        self._timestamps = t_sorted
 
         # windows are [start, stop) in time-ordered index space
         win_idx = build_windows(rec, window_length_us)
@@ -86,6 +87,11 @@ class DatFileSource:
     def ranges(self) -> Iterator[BatchRange]:
         """Iterate precomputed BatchRange slices."""
         return iter(self._ranges)
+
+    @property
+    def timestamps(self) -> np.ndarray:
+        """Time-sorted timestamps in microseconds."""
+        return self._timestamps
 
     def __len__(self) -> int:
         """Number of precomputed ranges."""
