@@ -95,6 +95,11 @@ class BladeCluster:
         # Tracking history for plotting
         self.angle_history = []  # List of (timestamp, angle_deg)
         self.confidence_history = []  # List of (timestamp, confidence)
+        # Persistence tracking
+        self.last_event_time = (
+            initial_events[:, 3].max() if len(initial_events) > 0 else 0
+        )
+        self.inactive_duration_us = 0
         self.update_statistics()
 
     def update_statistics(self):
@@ -182,6 +187,8 @@ class BladeCluster:
     def add_event(self, event):
         """Add single event to cluster."""
         self.events = np.vstack([self.events, event.reshape(1, -1)])
+        self.last_event_time = event[3]
+        self.inactive_duration_us = 0
         self.update_statistics()
 
     def remove_old_events(self, cutoff_time_us):
@@ -216,6 +223,9 @@ class TemporalTracker:
         center_history_window_us=3000,
         initial_eps=6,
         initial_min_samples=10,
+        grace_period_us=5000,
+        reinit_interval_us=2000,
+        min_events_for_reinit=50,
     ):
         self.clusters = {}
         self.next_cluster_id = 0
@@ -227,6 +237,19 @@ class TemporalTracker:
         self.initial_min_samples = initial_min_samples
         self.current_time_us = 0
         self.all_events = []  # Track all events in the rolling window
+
+        # Cluster persistence parameters
+        self.grace_period_us = (
+            grace_period_us  # Time to keep cluster alive with no events
+        )
+        self.min_cluster_size_grace = max(
+            2, min_cluster_size // 3
+        )  # Lower threshold during grace period
+
+        # Periodic re-initialization
+        self.reinit_interval_us = reinit_interval_us
+        self.last_reinit_time_us = 0
+        self.min_events_for_reinit = min_events_for_reinit
 
     def initialize_from_events(self, events):
         """Initialize clusters from initial batch of events."""
@@ -276,13 +299,10 @@ class TemporalTracker:
         if closest_cluster_id is not None:
             # Add to existing cluster
             self.clusters[closest_cluster_id].add_event(event)
-        else:
-            # Create new cluster
-            new_cluster = BladeCluster(
-                self.next_cluster_id, event.reshape(1, -1)
-            )
-            self.clusters[self.next_cluster_id] = new_cluster
-            self.next_cluster_id += 1
+        # else:
+        #     # Don't create new single-event clusters automatically
+        #     # Only DBSCAN initialization and re-initialization should create clusters
+        #     pass
 
         # Remove old events from all clusters (short window)
         cutoff_time = self.current_time_us - self.window_duration_us
@@ -299,11 +319,115 @@ class TemporalTracker:
         for cluster_id, cluster in self.clusters.items():
             cluster.remove_old_events(cutoff_time)
             cluster.remove_old_center_history(center_cutoff_time)
-            if len(cluster) < self.min_cluster_size:
+
+            # Update inactive duration
+            if len(cluster) == 0:
+                cluster.inactive_duration_us = (
+                    self.current_time_us - cluster.last_event_time
+                )
+
+            # Check if cluster should be removed with grace period
+            should_remove = False
+            if len(cluster) == 0:
+                # No events at all - check grace period
+                if cluster.inactive_duration_us > self.grace_period_us:
+                    should_remove = True
+            elif len(cluster) < self.min_cluster_size_grace:
+                # Very few events and outside grace period
+                if cluster.inactive_duration_us > self.grace_period_us:
+                    should_remove = True
+
+            if should_remove:
                 clusters_to_remove.append(cluster_id)
 
         for cluster_id in clusters_to_remove:
             del self.clusters[cluster_id]
+
+        # Periodic re-initialization to detect new clusters
+        if (
+            self.current_time_us - self.last_reinit_time_us
+        ) > self.reinit_interval_us:
+            self.reinitialize_from_unclustered()
+            self.last_reinit_time_us = self.current_time_us
+
+    def reinitialize_from_unclustered(self):
+        """Periodically run DBSCAN on unclustered events to detect new propellers."""
+        # Quick check: if we don't have enough total events, skip
+        if len(self.all_events) < self.min_events_for_reinit:
+            return
+
+        # Quick check: if we already have active clusters with most events, skip
+        total_clustered = sum(len(c.events) for c in self.clusters.values())
+        if (
+            total_clustered > len(self.all_events) * 0.5
+        ):  # If >50% events are clustered
+            return
+
+        # Get all currently clustered events (expensive operation)
+        clustered_event_set = set()
+        for cluster in self.clusters.values():
+            for event in cluster.events:
+                clustered_event_set.add((event[0], event[1], event[3]))
+
+        # Get unclustered events
+        unclustered_events = []
+        for event in self.all_events:
+            event_tuple = (event[0], event[1], event[3])
+            if event_tuple not in clustered_event_set:
+                unclustered_events.append(event)
+
+        # Need enough unclustered events to justify DBSCAN
+        if len(unclustered_events) < self.min_events_for_reinit:
+            return
+
+        unclustered_array = np.array(unclustered_events)
+
+        # Run DBSCAN on unclustered events
+        coords = unclustered_array[:, :2]
+        db = DBSCAN(eps=self.initial_eps, min_samples=self.initial_min_samples)
+        labels = db.fit_predict(coords)
+
+        # Create new clusters from detected groups
+        unique_labels = set(labels)
+        new_clusters_created = 0
+        for label in unique_labels:
+            if label == -1:  # Skip noise
+                continue
+
+            cluster_mask = labels == label
+            cluster_events = unclustered_array[cluster_mask]
+
+            # Require at least 1.5x the minimum size for new clusters from re-init
+            # This prevents creating too many small, spurious clusters
+            if len(cluster_events) >= int(self.min_cluster_size * 1.5):
+                # Check if this is truly a new cluster (not too close to existing ones)
+                cluster_center_x = np.mean(cluster_events[:, 0])
+                cluster_center_y = np.mean(cluster_events[:, 1])
+
+                is_new = True
+                for existing_cluster in self.clusters.values():
+                    dist = np.sqrt(
+                        (cluster_center_x - existing_cluster.center_x) ** 2
+                        + (cluster_center_y - existing_cluster.center_y) ** 2
+                    )
+                    # Use stricter distance threshold (3x assignment distance)
+                    # to avoid creating clusters that overlap with existing ones
+                    if dist < self.assignment_distance * 3:
+                        is_new = False
+                        break
+
+                if is_new:
+                    new_cluster = BladeCluster(
+                        self.next_cluster_id, cluster_events
+                    )
+                    self.clusters[self.next_cluster_id] = new_cluster
+                    self.next_cluster_id += 1
+                    new_clusters_created += 1
+
+        if new_clusters_created > 0:
+            print(
+                f"  Re-initialization: Created {new_clusters_created} new cluster(s)"
+            )
 
 
 def render_frame(tracker, frame_size, roi, config):
@@ -364,34 +488,48 @@ def render_frame(tracker, frame_size, roi, config):
 
     # Draw each cluster (on top of unclustered events)
     for cluster in tracker.clusters.values():
-        if len(cluster) < tracker.min_cluster_size:
-            continue
-
-        # Plot events
-        ax.scatter(
-            cluster.events[:, 0],
-            cluster.events[:, 1],
-            c=[cluster.color],
-            s=vis_config["event_size"],
-            alpha=vis_config["event_alpha"],
-            edgecolors="white",
-            linewidths=0.5,
-            zorder=5,
+        # Determine cluster status for visualization
+        is_sparse = len(cluster) < tracker.min_cluster_size
+        in_grace_period = (
+            cluster.inactive_duration_us > 0
+            and cluster.inactive_duration_us <= tracker.grace_period_us
         )
 
-        # Draw cluster center
+        # Plot events (even sparse clusters, with different styling)
+        if len(cluster.events) > 0:
+            # Use different alpha for sparse clusters
+            event_alpha = (
+                vis_config["event_alpha"] * 0.5
+                if is_sparse
+                else vis_config["event_alpha"]
+            )
+            ax.scatter(
+                cluster.events[:, 0],
+                cluster.events[:, 1],
+                c=[cluster.color],
+                s=vis_config["event_size"],
+                alpha=event_alpha,
+                edgecolors="white" if not is_sparse else "gray",
+                linewidths=0.5,
+                zorder=5,
+            )
+
+        # Draw cluster center (hollow for sparse clusters)
+        center_fill = not is_sparse
+        center_color = vis_config["center_color"] if not is_sparse else "orange"
         ax.add_patch(
             Circle(
                 (cluster.center_x, cluster.center_y),
                 radius=vis_config["center_size"],
-                color=vis_config["center_color"],
-                fill=True,
+                color=center_color,
+                fill=center_fill,
+                linewidth=2 if not center_fill else 0,
                 zorder=10,
             )
         )
 
-        # Draw fitted line (blade orientation)
-        if len(cluster.events) >= 2:
+        # Draw fitted line (blade orientation) - only for non-sparse clusters
+        if len(cluster.events) >= 2 and not is_sparse:
             x_min_cluster = cluster.events[:, 0].min()
             x_max_cluster = cluster.events[:, 0].max()
             x_line = np.array([x_min_cluster, x_max_cluster])
@@ -409,14 +547,32 @@ def render_frame(tracker, frame_size, roi, config):
                 zorder=5,
             )
 
-        # Label with ID, angle, and confidence
+        # Label with ID, angle, confidence, and status
         confidence_pct = cluster.confidence * 100
+
+        # Build status label
+        status_parts = [f"ID{cluster.id}"]
+        if len(cluster.events) >= 2:
+            status_parts.append(f"{cluster.angle_deg:.1f}°")
+        status_parts.append(f"{len(cluster)}ev")
+
+        if is_sparse:
+            if in_grace_period:
+                status_parts.append("GRACE")
+                label_color = "orange"
+            else:
+                status_parts.append("SPARSE")
+                label_color = "yellow"
+        else:
+            status_parts.append(f"C:{confidence_pct:.0f}%")
+            label_color = vis_config["label_color"]
+
         ax.text(
             cluster.center_x + 8,
             cluster.center_y - 5,
-            f"ID{cluster.id}\n{cluster.angle_deg:.1f}°\n{len(cluster)}ev\nC:{confidence_pct:.0f}%",
+            "\n".join(status_parts),
             fontsize=vis_config["label_fontsize"],
-            color=vis_config["label_color"],
+            color=label_color,
             fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.7),
             zorder=11,
@@ -537,6 +693,15 @@ def main():
         center_history_window_us=center_history_window_us,
         initial_eps=config["clustering"]["initial"]["eps"],
         initial_min_samples=config["clustering"]["initial"]["min_samples"],
+        grace_period_us=config["clustering"]["temporal"].get(
+            "grace_period_us", 5000
+        ),
+        reinit_interval_us=config["clustering"]["temporal"].get(
+            "reinit_interval_us", 2000
+        ),
+        min_events_for_reinit=config["clustering"]["temporal"].get(
+            "min_events_for_reinit", 50
+        ),
     )
     tracker.initialize_from_events(init_events)
     print(f"Initialized {len(tracker.clusters)} clusters")

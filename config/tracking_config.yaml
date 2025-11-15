@@ -12,7 +12,7 @@ data:
 
   # Time range to analyze
   start_time_sec: 3.0 # Start time in seconds from beginning of recording
-  duration_sec: 0.01 # Duration to process in seconds (10ms)
+  duration_sec: 0.1 # Duration to process in seconds (100ms) - longer to capture sparse propellers
 
   # Polarity to analyze (-1 for negative, 1 for positive, null for both)
   polarity: -1
@@ -34,6 +34,9 @@ clustering:
     assignment_distance: 15 # Maximum distance to assign event to existing cluster (pixels)
     min_cluster_size: 8 # Minimum events per cluster to keep it active
     window_duration_us: 750 # Rolling window duration in microseconds (0.75ms)
+    grace_period_us: 5000 # Time to keep cluster alive even with sparse events (5ms)
+    reinit_interval_us: 2000 # How often to re-run DBSCAN to detect new clusters (2ms)
+    min_events_for_reinit: 50 # Minimum unclustered events needed to trigger re-initialization
 
 # Region of interest (ROI)
 roi:
@@ -82,8 +85,8 @@ presets:
   drone_idle:
     data:
       input_file: "drone_idle.dat"
-      start_time_sec: 3.0
-      duration_sec: 0.05
+      start_time_sec: 2.0 # Start earlier to catch propellers that might appear later
+      duration_sec: 0.2 # Longer duration to see all propellers over time
       polarity: -1
     hot_pixel:
       threshold: 100
@@ -93,8 +96,11 @@ presets:
         min_samples: 10
       temporal:
         assignment_distance: 15
-        min_cluster_size: 8
-        window_duration_us: 375
+        min_cluster_size: 5 # Lower threshold to keep sparse propellers
+        window_duration_us: 1000 # Longer window to accumulate more events from sparse propellers
+        grace_period_us: 20000 # Very long grace period for sparse drone propeller data (20ms)
+        reinit_interval_us: 10000 # Check for new propellers every 10ms
+        min_events_for_reinit: 50 # Lower threshold but with longer reinit interval
     roi:
       margin: 50
 
@@ -114,6 +120,9 @@ presets:
         assignment_distance: 20 # May need larger distance
         min_cluster_size: 10
         window_duration_us: 1000 # May need different window based on RPM
+        grace_period_us: 8000 # Grace period for fan
+        reinit_interval_us: 2000 # Check for new blades every 2ms
+        min_events_for_reinit: 50
     roi:
       margin: 75 # Larger margin for potentially larger fan
       manual: null # Auto-detect from data
@@ -134,5 +143,8 @@ presets:
         assignment_distance: 15
         min_cluster_size: 8
         window_duration_us: 750
+        grace_period_us: 5000
+        reinit_interval_us: 2000
+        min_events_for_reinit: 50
     roi:
       margin: 50
