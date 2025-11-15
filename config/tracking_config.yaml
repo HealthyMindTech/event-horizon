@@ -109,3 +109,28 @@ presets:
         min_events_for_reinit: 50 # Lower threshold but with longer reinit interval
     roi:
       margin: 50
+
+  drone_moving:
+    data:
+      input_file: "drone_moving.dat"
+      start_time_sec: 1.0
+      duration_sec: 0.1
+      polarity: -1
+    hot_pixel:
+      threshold: 150
+    clustering:
+      initial:
+        eps: 3
+        min_samples: 8
+        window_us: 15000
+        min_cluster_events: 150
+        max_y_spread: 5.0
+      temporal:
+        assignment_distance: 12
+        min_cluster_size: 6
+        window_duration_us: 750
+        grace_period_us: 10000
+        reinit_interval_us: 5000
+        min_events_for_reinit: 60
+    roi:
+      margin: 60

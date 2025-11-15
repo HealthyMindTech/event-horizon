@@ -1,0 +1,44 @@
+data:
+  input_file: "../drone_idle.dat"
+  width: 1280
+  height: 720
+  start_time_sec: 1.0
+  duration_sec: 5.0
+  polarity: -1
+
+hot_pixel:
+  threshold: 100
+
+clustering:
+  initial:
+    eps: 2
+    min_samples: 5
+    window_us: 10000
+    min_cluster_events: 100
+    max_y_spread: 5.0
+  temporal:
+    assignment_distance: 10
+    min_cluster_size: 5
+    window_duration_us: 500
+    grace_period_us: 20000
+    reinit_interval_us: 10000
+    min_events_for_reinit: 50
+
+video:
+  output_file: "blade_tracking_5sec.mp4"
+  fps: 30
+  width: 1920
+  height: 1080
+  frame_interval: null
+
+roi:
+  margin: 50
+  manual: null
+
+presets:
+  test_5sec:
+    data:
+      input_file: "../drone_idle.dat"
+      start_time_sec: 1.0
+      duration_sec: 5.0
+      polarity: -1

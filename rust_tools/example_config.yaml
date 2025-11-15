@@ -1,0 +1,65 @@
+# Example configuration for test_clustering_robustness
+#
+# This file demonstrates the expected structure for the YAML configuration
+# used by the clustering robustness test tool.
+
+data:
+  # Path to the input .dat file (relative to config file location)
+  input_file: "../drone_idle.dat"
+
+  # Image dimensions (must match the event camera sensor)
+  width: 1280
+  height: 720
+
+  # Start time in seconds from the beginning of the recording
+  start_time_sec: 0.0
+
+  # Duration in seconds to analyze
+  duration_sec: 1.0
+
+  # Polarity filter: 1 (positive), -1 (negative), or null (both)
+  polarity: 1
+
+hot_pixel:
+  # Threshold for hot pixel detection
+  # Pixels with more than this many events will be filtered out
+  threshold: 100
+
+# Optional presets for common configurations
+presets:
+  # Configuration for idle drone scenario
+  drone_idle:
+    data:
+      start_time_sec: 0.5
+      duration_sec: 0.2
+      polarity: 1
+    hot_pixel:
+      threshold: 150
+
+  # Configuration for active/flying drone scenario
+  drone_active:
+    data:
+      start_time_sec: 1.0
+      duration_sec: 0.5
+      polarity: 1
+    hot_pixel:
+      threshold: 200
+
+  # Configuration for approaching drone scenario
+  drone_approaching:
+    data:
+      start_time_sec: 2.0
+      duration_sec: 1.0
+      polarity: null  # Use both polarities
+    hot_pixel:
+      threshold: 100
+
+# Additional notes:
+# - The tool will test multiple parameter combinations automatically
+# - Parameter ranges are defined in the Rust code:
+#   * eps: [2.0, 3.0, 4.0, 5.0]
+#   * min_samples: [5, 10, 15]
+#   * window_us: [5000, 10000, 15000, 20000]
+#   * min_cluster_events: [100, 200, 300]
+#   * max_y_spread: [4.0, 5.0, 6.0]
+# - Modify these ranges in src/main.rs if needed for your specific use case
