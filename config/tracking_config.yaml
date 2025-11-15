@@ -95,10 +95,10 @@ presets:
       threshold: 100
     clustering:
       initial:
-        eps: 3
-        min_samples: 10
-        window_us: 15000
-        min_cluster_events: 300
+        eps: 2
+        min_samples: 5
+        window_us: 10000
+        min_cluster_events: 100
         max_y_spread: 5.0
       temporal:
         assignment_distance: 15
