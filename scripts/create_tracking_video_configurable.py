@@ -226,6 +226,7 @@ class TemporalTracker:
         self.initial_eps = initial_eps
         self.initial_min_samples = initial_min_samples
         self.current_time_us = 0
+        self.all_events = []  # Track all events in the rolling window
 
     def initialize_from_events(self, events):
         """Initialize clusters from initial batch of events."""
@@ -259,6 +260,9 @@ class TemporalTracker:
         x, y, polarity, timestamp = event
         self.current_time_us = timestamp
 
+        # Add to all_events list
+        self.all_events.append(event)
+
         # Try to assign to existing cluster
         min_distance = float("inf")
         closest_cluster_id = None
@@ -286,6 +290,9 @@ class TemporalTracker:
         center_cutoff_time = (
             self.current_time_us - self.center_history_window_us
         )
+
+        # Remove old events from all_events list
+        self.all_events = [e for e in self.all_events if e[3] >= cutoff_time]
 
         clusters_to_remove = []
 
@@ -315,7 +322,7 @@ def render_frame(tracker, frame_size, roi, config):
     # Title with timing info
     ax.set_title(
         f"Temporal Blade Tracking - {config['data']['input_file']}\n"
-        f"Time: {tracker.current_time_us / 1000:.3f}ms | Active Blades: {len(tracker.clusters)}",
+        f"Time: {tracker.current_time_us / 1000:.3f}ms | Active Blades: {len(tracker.clusters)} | Total Events: {len(tracker.all_events)}",
         color="white",
         fontsize=14,
         fontweight="bold",
@@ -327,7 +334,35 @@ def render_frame(tracker, frame_size, roi, config):
         True, alpha=vis_config["grid_alpha"], color=vis_config["grid_color"]
     )
 
-    # Draw each cluster
+    # Get all events that are part of clusters
+    clustered_event_set = set()
+    for cluster in tracker.clusters.values():
+        for event in cluster.events:
+            clustered_event_set.add(
+                (event[0], event[1], event[3])
+            )  # x, y, timestamp
+
+    # Draw unclustered events first (so they appear behind clustered ones)
+    if len(tracker.all_events) > 0:
+        unclustered_events = []
+        for event in tracker.all_events:
+            event_tuple = (event[0], event[1], event[3])
+            if event_tuple not in clustered_event_set:
+                unclustered_events.append(event)
+
+        if len(unclustered_events) > 0:
+            unclustered_array = np.array(unclustered_events)
+            ax.scatter(
+                unclustered_array[:, 0],
+                unclustered_array[:, 1],
+                c=vis_config.get("unclustered_color", "gray"),
+                s=vis_config.get("unclustered_size", 4),
+                alpha=vis_config.get("unclustered_alpha", 0.3),
+                edgecolors="none",
+                zorder=1,
+            )
+
+    # Draw each cluster (on top of unclustered events)
     for cluster in tracker.clusters.values():
         if len(cluster) < tracker.min_cluster_size:
             continue
@@ -341,6 +376,7 @@ def render_frame(tracker, frame_size, roi, config):
             alpha=vis_config["event_alpha"],
             edgecolors="white",
             linewidths=0.5,
+            zorder=5,
         )
 
         # Draw cluster center

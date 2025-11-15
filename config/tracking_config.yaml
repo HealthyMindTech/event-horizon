@@ -64,6 +64,9 @@ video:
     background_color: "black"
     event_size: 8 # Size of event dots
     event_alpha: 0.7 # Transparency of events (0-1)
+    unclustered_color: "white" # Color for events not in any cluster
+    unclustered_size: 4 # Size of unclustered event dots
+    unclustered_alpha: 1 # Transparency of unclustered events (0-1)
     center_color: "red"
     center_size: 3 # Radius of cluster center marker
     line_color: "white"
@@ -80,7 +83,7 @@ presets:
     data:
       input_file: "drone_idle.dat"
       start_time_sec: 3.0
-      duration_sec: 0.02
+      duration_sec: 0.05
       polarity: -1
     hot_pixel:
       threshold: 100
