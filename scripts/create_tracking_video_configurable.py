@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import DBSCAN
+from scipy.signal import find_peaks
 import cv2
 import argparse
 import yaml
@@ -1132,15 +1133,47 @@ def main():
                     [t / 1000.0 for t, _ in cluster.width_history]
                 )
                 width_values = np.array([w for _, w in cluster.width_history])
-                ax3.plot(
-                    width_times,
-                    width_values,
-                    marker="o",
-                    markersize=2,
-                    linewidth=1.5,
-                    label=f"Blade ID{cluster.id}",
-                    color=cluster.color,
-                )
+
+                # Apply running mean smoothing (window size 80)
+                window_size = 80
+                if len(width_values) >= window_size:
+                    smoothed_width = np.convolve(
+                        width_values,
+                        np.ones(window_size) / window_size,
+                        mode="valid",
+                    )
+                    smoothed_times = width_times[window_size - 1 :]
+
+                    # Plot raw data (faint)
+                    ax3.plot(
+                        width_times,
+                        width_values,
+                        marker="o",
+                        markersize=1,
+                        linewidth=0.5,
+                        alpha=0.3,
+                        color=cluster.color,
+                    )
+
+                    # Plot smoothed data (main line)
+                    ax3.plot(
+                        smoothed_times,
+                        smoothed_width,
+                        linewidth=2.5,
+                        label=f"Blade ID{cluster.id}",
+                        color=cluster.color,
+                    )
+                else:
+                    # Not enough data for smoothing, plot raw
+                    ax3.plot(
+                        width_times,
+                        width_values,
+                        marker="o",
+                        markersize=2,
+                        linewidth=1.5,
+                        label=f"Blade ID{cluster.id}",
+                        color=cluster.color,
+                    )
 
                 # Print width statistics
                 print(f"  Blade width analysis:")
@@ -1149,6 +1182,63 @@ def main():
                 print(
                     f"    Range: [{np.min(width_values):.2f}, {np.max(width_values):.2f}] pixels"
                 )
+
+                # Calculate RPM from width maxima
+                if len(width_values) >= window_size:
+                    # Use smoothed data for peak detection
+                    # Find local maxima (peaks) in the width signal
+                    # prominence ensures we get significant peaks, not noise
+                    # distance ensures peaks are reasonably spaced
+                    prominence = np.std(smoothed_width) * 0.5
+                    min_distance = max(5, len(smoothed_width) // 20)
+
+                    peaks, properties = find_peaks(
+                        smoothed_width,
+                        prominence=prominence,
+                        distance=min_distance,
+                    )
+
+                    if len(peaks) >= 2:
+                        # Get times at peak locations
+                        peak_times = smoothed_times[peaks]
+
+                        # Calculate periods between consecutive peaks
+                        periods_ms = np.diff(peak_times)
+
+                        if len(periods_ms) > 0:
+                            mean_period_ms = np.mean(periods_ms)
+                            mean_period_s = mean_period_ms / 1000.0
+                            freq_hz = (
+                                1.0 / mean_period_s if mean_period_s > 0 else 0
+                            )
+                            # Divide by 2 because each width cycle is half a rotation
+                            rpm = (freq_hz * 60) / 2
+
+                            print(f"  RPM calculation (from width maxima):")
+                            print(f"    Peaks detected: {len(peaks)}")
+                            print(f"    Mean period: {mean_period_ms:.3f} ms")
+                            print(f"    Frequency: {freq_hz:.2f} Hz")
+                            print(f"    RPM: {rpm:.0f}")
+
+                            # Mark peaks on the width plot
+                            ax3.scatter(
+                                smoothed_times[peaks],
+                                smoothed_width[peaks],
+                                color=cluster.color,
+                                s=100,
+                                marker="*",
+                                edgecolors="black",
+                                linewidths=1,
+                                zorder=10,
+                            )
+                    else:
+                        print(
+                            f"  RPM calculation (from width maxima): Not enough peaks detected ({len(peaks)})"
+                        )
+                else:
+                    print(
+                        f"  RPM calculation (from width maxima): Not enough data for smoothing"
+                    )
 
             # Extract confidence history
             if len(cluster.confidence_history) > 0:

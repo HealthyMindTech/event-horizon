@@ -11,7 +11,7 @@ data:
   height: 720
 
   # Time range to analyze
-  start_time_sec: 3.0 # Start time in seconds from beginning of recording
+  start_time_sec: 5.0 # Start time in seconds from beginning of recording
   duration_sec: 0.1 # Duration to process in seconds (100ms) - longer to capture sparse propellers
 
   # Polarity to analyze (-1 for negative, 1 for positive, null for both)
@@ -88,16 +88,16 @@ presets:
   drone_idle:
     data:
       input_file: "drone_idle.dat"
-      start_time_sec: 2.0 # Start earlier to catch propellers that might appear later
+      start_time_sec: 4.0 # Start earlier to catch propellers that might appear later
       duration_sec: 0.06 # Reduced by 70% from 0.2s
       polarity: -1
     hot_pixel:
       threshold: 100
     clustering:
       initial:
-        eps: 6
+        eps: 3
         min_samples: 10
-        window_us: 20000
+        window_us: 15000
         min_cluster_events: 300
         max_y_spread: 5.0
       temporal:
@@ -107,56 +107,5 @@ presets:
         grace_period_us: 20000 # Very long grace period for sparse drone propeller data (20ms)
         reinit_interval_us: 10000 # Check for new propellers every 10ms
         min_events_for_reinit: 50 # Lower threshold but with longer reinit interval
-    roi:
-      margin: 50
-
-  fan_const_rpm:
-    data:
-      input_file: "fan_const_rpm.dat"
-      start_time_sec: 1.0 # May need adjustment
-      duration_sec: 0.01
-      polarity: -1 # May need to try both polarities
-    hot_pixel:
-      threshold: 50 # May have fewer hot pixels
-    clustering:
-      initial:
-        eps: 8 # May need larger eps if fan is farther/larger
-        min_samples: 15
-        window_us: 20000
-        min_cluster_events: 300
-        max_y_spread: 5.0
-      temporal:
-        assignment_distance: 20 # May need larger distance
-        min_cluster_size: 10
-        window_duration_us: 1000 # May need different window based on RPM
-        grace_period_us: 8000 # Grace period for fan
-        reinit_interval_us: 2000 # Check for new blades every 2ms
-        min_events_for_reinit: 50
-    roi:
-      margin: 75 # Larger margin for potentially larger fan
-      manual: null # Auto-detect from data
-
-  drone_idle_both_polarities:
-    data:
-      input_file: "drone_idle.dat"
-      start_time_sec: 3.0
-      duration_sec: 0.01
-      polarity: null # Both polarities
-    hot_pixel:
-      threshold: 100
-    clustering:
-      initial:
-        eps: 6
-        min_samples: 10
-        window_us: 20000
-        min_cluster_events: 300
-        max_y_spread: 5.0
-      temporal:
-        assignment_distance: 15
-        min_cluster_size: 8
-        window_duration_us: 750
-        grace_period_us: 5000
-        reinit_interval_us: 2000
-        min_events_for_reinit: 50
     roi:
       margin: 50
