@@ -290,6 +290,98 @@ class TrackedPropeller:
     velocity_y: float = 0.0
 
 
+class DroneTrajectoryTracker:
+    """Tracks drone trajectories to draw movement trails."""
+    
+    def __init__(self, max_distance: float = 150.0, max_trail_length: int = 50):
+        """Initialize trajectory tracker.
+        
+        Args:
+            max_distance: Maximum pixel distance for matching drones between frames
+            max_trail_length: Maximum number of positions to store in trail
+        """
+        self.max_distance = max_distance
+        self.max_trail_length = max_trail_length
+        # Dictionary mapping drone ID to deque of (center_x, center_y) positions
+        self.trajectories: dict[int, deque] = {}
+        self.next_id = 0
+    
+    def update(
+        self,
+        detections: list[tuple[int, int, int, int]],
+    ) -> dict[tuple[int, int, int, int], int]:
+        """Update trajectories with new detections.
+        
+        Args:
+            detections: List of drone bounding boxes (x, y, w, h)
+        
+        Returns:
+            Dictionary mapping drone bbox to trajectory ID
+        """
+        # Calculate centers for current detections
+        current_centers = [
+            ((x + w // 2, y + h // 2), (x, y, w, h))
+            for x, y, w, h in detections
+        ]
+        
+        # Match current detections to existing trajectories
+        matched_ids = set()
+        bbox_to_id = {}
+        
+        # First pass: match existing trajectories
+        for traj_id, trajectory in self.trajectories.items():
+            if len(trajectory) == 0:
+                continue
+            
+            # Get last known position
+            last_x, last_y = trajectory[-1]
+            
+            best_match = None
+            best_distance = float('inf')
+            best_bbox = None
+            
+            for (cx, cy), bbox in current_centers:
+                if bbox in bbox_to_id:  # Already matched
+                    continue
+                
+                distance = np.sqrt((cx - last_x) ** 2 + (cy - last_y) ** 2)
+                if distance < self.max_distance and distance < best_distance:
+                    best_match = (cx, cy)
+                    best_distance = distance
+                    best_bbox = bbox
+            
+            if best_match is not None:
+                # Update trajectory
+                trajectory.append(best_match)
+                if len(trajectory) > self.max_trail_length:
+                    trajectory.popleft()
+                bbox_to_id[best_bbox] = traj_id
+                matched_ids.add(traj_id)
+        
+        # Second pass: create new trajectories for unmatched detections
+        for (cx, cy), bbox in current_centers:
+            if bbox not in bbox_to_id:
+                # Create new trajectory
+                traj_id = self.next_id
+                self.next_id += 1
+                self.trajectories[traj_id] = deque([(cx, cy)], maxlen=self.max_trail_length)
+                bbox_to_id[bbox] = traj_id
+        
+        # Remove trajectories that haven't been matched (drones disappeared)
+        active_ids = set(bbox_to_id.values())
+        ids_to_remove = [tid for tid in self.trajectories.keys() if tid not in active_ids]
+        for tid in ids_to_remove:
+            del self.trajectories[tid]
+        
+        return bbox_to_id
+    
+    def get_trajectory(self, traj_id: int) -> list[tuple[int, int]]:
+        """Get trajectory points for a given ID."""
+        if traj_id in self.trajectories:
+            return list(self.trajectories[traj_id])
+        return []
+
+
 class PropellerTracker:
     """Tracks 4 propellers per drone, maintaining identity across frames."""
     
@@ -1080,6 +1172,8 @@ def draw_detections(
     color: tuple[int, int, int] = (0, 255, 0),
     circle_color: tuple[int, int, int] = (255, 0, 0),
     propeller_color: tuple[int, int, int] = (0, 165, 255),  # Orange
+    trajectories: dict[tuple[int, int, int, int], list[tuple[int, int]]] | None = None,
+    trail_color: tuple[int, int, int] = (0, 255, 0),
 ) -> np.ndarray:
     """Draw bounding boxes, propeller circles, and detected propellers on frame."""
     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
@@ -1088,6 +1182,30 @@ def draw_detections(
     if circles is not None:
         for x, y, r in circles:
             cv2.circle(frame_bgr, (x, y), r, circle_color, 1)
+
+    # Draw trajectories (trails) before bounding boxes so they appear behind
+    if trajectories is not None:
+        for drone_bbox, trail_points in trajectories.items():
+            if len(trail_points) < 2:
+                continue
+            
+            # Draw trail as connected lines
+            points = np.array(trail_points, dtype=np.int32)
+            cv2.polylines(
+                frame_bgr,
+                [points],
+                isClosed=False,
+                color=trail_color,
+                thickness=3,
+                lineType=cv2.LINE_AA,
+            )
+            
+            # Optionally draw points along the trail (fade out)
+            for i, (px, py) in enumerate(trail_points):
+                # Fade intensity based on age (older points are dimmer)
+                alpha = 1.0 - (i / len(trail_points)) * 0.7
+                point_color = tuple(int(c * alpha) for c in trail_color)
+                cv2.circle(frame_bgr, (int(px), int(py)), 2, point_color, -1)
 
     # Draw drone bounding boxes and propellers
     for drone_bbox in detections:
@@ -1316,6 +1434,17 @@ def main() -> None:
         default=None,
         help="Output video file path (e.g., output.mp4). If specified, saves detection video instead of displaying.",
     )
+    parser.add_argument(
+        "--show-trail",
+        action="store_true",
+        help="Show trajectory trail for detected drones",
+    )
+    parser.add_argument(
+        "--trail-length",
+        type=int,
+        default=50,
+        help="Maximum number of positions to show in trail (default: 50)",
+    )
     args = parser.parse_args()
 
     # Initialize data source
@@ -1334,6 +1463,12 @@ def main() -> None:
     
     # Propeller tracker for maintaining identity across frames (only if enabled)
     propeller_tracker = PropellerTracker(max_distance=100.0, max_age=5) if args.detect_propellers else None
+    
+    # Trajectory tracker for drawing trails (only if enabled)
+    trajectory_tracker = DroneTrajectoryTracker(
+        max_distance=150.0,
+        max_trail_length=args.trail_length,
+    ) if args.show_trail else None
 
     # Initialize video writer if output path is specified
     video_writer = None
@@ -1532,9 +1667,23 @@ def main() -> None:
                         px, py, pw, ph, angle = prop[:5]
                         print(f"  Propeller: center=({px + pw // 2}, {py + ph // 2}), size=({pw}, {ph}), angle={angle:.1f}°")
 
-        # Draw detections with propellers
+        # Update trajectory tracker and get trails
+        trajectories = {}
+        if trajectory_tracker is not None:
+            bbox_to_id = trajectory_tracker.update(filtered_detections)
+            # Build dictionary mapping bbox to trail points
+            for bbox, traj_id in bbox_to_id.items():
+                trail_points = trajectory_tracker.get_trajectory(traj_id)
+                if len(trail_points) > 1:  # Need at least 2 points for a trail
+                    trajectories[bbox] = trail_points
+        
+        # Draw detections with propellers and trails
         display_frame = draw_detections(
-            frame, filtered_detections, None, drone_propellers
+            frame,
+            filtered_detections,
+            None,
+            drone_propellers,
+            trajectories=trajectories if args.show_trail else None,
         )
         
         # Debug visualization: show ROI and binary for propeller detection (only if enabled)
