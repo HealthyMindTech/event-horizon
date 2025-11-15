@@ -101,9 +101,9 @@ presets:
         min_cluster_events: 100
         max_y_spread: 5.0
       temporal:
-        assignment_distance: 15
+        assignment_distance: 10
         min_cluster_size: 5 # Lower threshold to keep sparse propellers
-        window_duration_us: 1000 # Longer window to accumulate more events from sparse propellers
+        window_duration_us: 500 # Optimized for RPM stability (0.5ms rolling window)
         grace_period_us: 20000 # Very long grace period for sparse drone propeller data (20ms)
         reinit_interval_us: 10000 # Check for new propellers every 10ms
         min_events_for_reinit: 50 # Lower threshold but with longer reinit interval
