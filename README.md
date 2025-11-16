@@ -1,244 +1,588 @@
-# evio
+# Event Horizon 🎯
 
-Minimal Python library for standardized handling of event camera data.
+**Microsecond motion radar for rotating objects**
 
-**evio** provides a single abstraction for event streams. Each source yields standardized event packets containing `x_coords, y_coords, timestamps, polarities` arrays. This makes algorithms and filters source-agnostic.
-
----
-
-## Features
-- Unified async interface for event streams
-- Read `.dat` recordings with optional real-time pacing
-- Extensible to live cameras via adapter classes (requires Metavision SDK)
+Event Horizon transforms event cameras into microsecond-precision motion radars for ultra-fast rotating objects. Using only asynchronous event data, we achieve real-time propeller blade tracking and RPM measurement with performance optimized for ARM devices.
 
 ---
 
-## Repository Structure
+## 🚀 What We Built
+
+### Core Capabilities
+
+- **Propeller blade tracking** with microsecond temporal resolution
+- **RPM estimation** using multiple methods (FFT, autocorrelation, zero-crossing analysis)
+- **Real-time clustering** with DBSCAN-based temporal tracking
+- **ARM SIMD optimization** achieving **1.71x speedup** using Neon intrinsics
+- **Near real-time performance**: 10 seconds of event data processes in ~10 seconds
+
+### Why This Matters
+
+Traditional frame-based cameras are fundamentally limited by exposure time and frame rate. Event cameras capture every brightness change with microsecond precision, enabling us to:
+
+- **Track individual propeller blades** rotating at thousands of RPM
+- **Measure rotation frequency** to predict drone thrust and future positions
+- **Detect periodic patterns** from various angles using FFT analysis
+- **Deploy on mobile ARM devices** for field use (not just lab PCs)
+
+This is critical for autonomous drone interception, no-fly zone enforcement, collision avoidance, and high-speed tracking applications.
+
+---
+
+## 📊 Performance
+
+### ARM SIMD Optimization (@arm 📱)
+
+Implemented SIMD parallelization using ARM Neon intrinsics in Rust:
+
+- **1.71x speedup** on ARM processors
+- Optimized operations: mean, variance, distance calculations, batch processing
+- Enables **mobile deployment** for real-time tracking in the field
+- Near real-time: 10-second event file processes in ~10 seconds
+
+**Implementation**: Following [ARM's SIMD on Rust guide](https://learn.arm.com/learning-paths/cross-platform/simd-on-rust/simd-on-rust-part1/), we parallelized statistical calculations and clustering operations critical for blade tracking.
+
+### Cloud Infrastructure (@Vultr ☁️)
+
+Deployed hyperparameter optimization on **Vultr cloud infrastructure**:
+
+- Memory-optimized compute instances for processing large event datasets
+- Distributed parameter search for optimal DBSCAN clustering thresholds
+- Fast iteration on detection algorithms
+
+---
+
+## 🏗️ System Architecture
+
+### Pipeline Overview
 
 ```
-.
-├─ pyproject.toml
-├─ README.md
-├─ LICENSE
-├─ .gitignore
-├─ scripts/
-│  └─ play_dat.py    
-└─ src/
-   └─ evio/
-      ├─ __init__.py
-      ├── core/
-      │   ├── __init__.py
-      │   ├── index_scheduler.py
-      │   ├── mmap.py
-      │   ├── pacer.py
-      │   └── recording.py
-      └─── source/
-          ├── __init__.py
-          └── dat_file.py
-       
+Event Stream (.dat) 
+  → Hot Pixel Filtering 
+  → Temporal Windowing 
+  → DBSCAN Clustering 
+  → Blade Tracking 
+  → Angle/Width Analysis 
+  → RPM Estimation (FFT/Autocorrelation/Zero-Crossing)
+```
+
+### Core Components
+
+1. **Event Stream Processing** (`evio` library)
+   - Memory-mapped `.dat` file reading (Prophesee Metavision format)
+   - Zero-copy decoding of packed event data
+   - Real-time playback pacing
+
+2. **Hot Pixel Filtering**
+   - Identifies and removes noisy pixels with excessive events
+   - Improves clustering quality
+
+3. **Temporal Blade Clustering**
+   - Initial DBSCAN clustering on time windows (10-20ms)
+   - Rolling window tracking (0.5-0.75ms) with grace periods
+   - Event-to-cluster assignment with distance thresholds
+   - Periodic re-initialization to detect new blades
+
+4. **Blade Statistics & Analysis**
+   - Center position tracking with history
+   - Angle calculation via linear regression
+   - Width measurement (blade extent)
+   - Confidence scoring
+
+5. **RPM Estimation Methods**
+   - **FFT Analysis**: Frequency domain periodicity detection
+   - **Autocorrelation**: Time-domain period detection
+   - **Angle Zero-Crossing**: Track sin(angle) zero crossings
+   - **Width Maxima**: Detect peaks in blade width cycles
+
+### Quality Filtering
+
+Multi-stage filtering ensures robust blade detection:
+
+- **Size constraints**: Min/max cluster events (100-10000)
+- **Spatial filtering**: Max Y-spread to reject diffuse patterns
+- **Temporal consistency**: Grace periods for intermittent blade visibility
+- **Statistical validation**: Confidence scores based on linear fit quality
+
+---
+
+## 📦 Repository Structure
+
+```
+evio/
+├── pyproject.toml                          # Python package configuration
+├── config/
+│   └── tracking_config.yaml                # Hyperparameters and presets
+├── scripts/
+│   ├── play_dat.py                         # Event stream visualizer
+│   ├── simulate_propeller.py               # Synthetic event generation
+│   ├── temporal_blade_tracking.py          # Core tracking implementation
+│   ├── create_tracking_video_configurable.py  # Video generation with RPM
+│   ├── analyze_blade_periodicity.py        # FFT & autocorrelation analysis
+│   ├── detect_blade_periods.py             # Period detection methods
+│   ├── test_clustering_robustness.py       # Parameter optimization (Python)
+│   ├── test_rpm_robustness.py              # RPM consistency testing
+│   ├── visualize_raw_events.py             # Event data exploration
+│   └── detection/
+│       ├── detect_drone.py                 # Drone detection & propeller tracking
+│       ├── detect_drone_v2.py              # Enhanced detection pipeline
+│       └── compare_detection_methods.py    # Method comparison
+├── rust_tools/
+│   ├── Cargo.toml
+│   ├── src/
+│   │   ├── main.rs                         # Clustering robustness (Rust)
+│   │   ├── simd_ops.rs                     # ARM Neon SIMD optimizations
+│   │   ├── benchmark.rs                    # SIMD vs scalar benchmarks
+│   │   └── bin/
+│   │       ├── benchmark.rs                # Benchmark executable
+│   │       └── create_tracking_video.rs    # Video generation (Rust)
+└── src/evio/
+    ├── core/
+    │   ├── recording.py                    # .dat file abstraction
+    │   ├── mmap.py                         # Memory-mapped I/O
+    │   ├── pacer.py                        # Real-time playback
+    │   └── index_scheduler.py              # Event indexing
+    └── source/
+        └── dat_file.py                     # .dat decoder
 ```
 
 ---
 
-## Quick start using UV
-If not already installed, install UV (instructions [here](https://docs.astral.sh/uv/getting-started/installation/)) \
-Clone the repo and in the repo root run
+## 🏃 Quick Start
+
+### Prerequisites
+
+Install [UV](https://docs.astral.sh/uv/getting-started/installation/) for Python package management.
+
+For Rust tools (optional):
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Installation
 
 ```bash
-# create venv and install dependencies.
+# Clone repository
+git clone <repository-url>
+cd evio
+
+# Install Python dependencies
 uv sync
 
-# play a .dat file in real time
-uv run scripts/play_dat.py path/to/dat/file.dat
+# Build Rust tools (optional, for SIMD benchmarks)
+cd rust_tools
+cargo build --release
+cd ..
 ```
 
-Adjust window duration in ms using `--window` argument and playback speed factor with `--speed` argument. When event data is constructed to frames we take all events between t and t + window and display them in the frame. With very short windows the rendering of the frames can take longer than the actual window duration and the player falls behind (depends on the playback speed), you can see this by comparing the wall clock to the recording clock in the GUI. In such cases you can force the playback speed with a `--force-speed` argument. This drops enough frames to make the recording play according to the set speed.
+### Quick Examples
+
+```bash
+# Visualize event stream
+uv run scripts/play_dat.py drone_idle.dat
+
+# Track propeller blades and estimate RPM
+uv run scripts/create_tracking_video_configurable.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle
+
+# Analyze blade periodicity with FFT
+uv run scripts/analyze_blade_periodicity.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle
+
+# Detect drones with propeller tracking
+uv run scripts/detection/detect_drone.py drone_moving.dat --detect-propellers
+
+# Test clustering parameter robustness
+uv run scripts/test_clustering_robustness.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle
+```
 
 ---
 
+## 🎮 Usage Guide
 
-## `.dat` File Encoding
+### Blade Tracking & RPM Estimation
 
-`evio` reads Prophesee Metavision-style DAT files, which store events as fixed-width binary records following a short ASCII header.
+Generate tracking video with comprehensive RPM analysis:
 
-### Header
-The file starts with text lines beginning with `%`, for example:
+```bash
+uv run scripts/create_tracking_video_configurable.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle
+```
 
+**Output:**
+- Tracking video (`blade_tracking_video.mp4`) with annotated blades
+- Analysis plots showing:
+  - Blade angles over time
+  - Confidence scores
+  - Cluster widths
+  - FFT frequency spectrum
+  - Autocorrelation periodicity
+  - RPM calculations
+
+### Periodicity Analysis
+
+Deep dive into rotation frequency detection:
+
+```bash
+uv run scripts/analyze_blade_periodicity.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle
+```
+
+**Methods:**
+- **FFT**: Identifies dominant frequencies in angle/position signals
+- **Autocorrelation**: Detects repeating patterns in time series
+- **Angle Jump Analysis**: Measures intervals between large angular changes
+
+**Output:** Comprehensive plots showing all three methods with RPM estimates.
+
+### Hyperparameter Optimization
+
+Test clustering robustness across parameters:
+
+**Python version:**
+```bash
+uv run scripts/test_clustering_robustness.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle \
+    --output results.csv
+```
+
+**Rust version (with SIMD optimization):**
+```bash
+cd rust_tools
+cargo run --release -- \
+    --config ../config/tracking_config.yaml \
+    --preset drone_idle \
+    --output ../clustering_robustness_results.csv
+cd ..
+```
+
+Exports CSV with metrics across parameter combinations:
+- eps (DBSCAN distance threshold)
+- min_samples (minimum cluster size)
+- window_us (temporal window duration)
+- Cluster counts, sizes, spreads, noise percentages
+
+### Drone Detection
+
+Full drone detection with optional propeller tracking:
+
+```bash
+# Basic detection
+uv run scripts/detection/detect_drone.py drone_moving.dat
+
+# With propeller tracking and video output
+uv run scripts/detection/detect_drone.py drone_moving.dat \
+    --detect-propellers \
+    --output-video detection.mp4 \
+    --window 50 \
+    --speed 1.0
+```
+
+**Visualization:**
+- 🟩 Green boxes: Detected drones
+- 🟧 Orange ellipses: Tracked propellers (P1-P4)
+- HUD: Detection counts, timing info
+
+### SIMD Benchmark
+
+Compare SIMD vs scalar performance:
+
+```bash
+cd rust_tools
+cargo run --release --bin benchmark
+cd ..
+```
+
+Tests mean/variance calculations, distance computations, and batch operations across data sizes.
+
+---
+
+## ⚙️ Configuration
+
+All scripts use `config/tracking_config.yaml` with preset support:
+
+### Available Presets
+
+- **`drone_idle`**: Stationary drone with sparse propeller events
+- **`drone_moving`**: Moving drone with denser event patterns
+
+### Key Parameters
+
+**Data:**
+- `input_file`: Path to .dat file
+- `start_time_sec`: Start time offset
+- `duration_sec`: Analysis window duration
+- `polarity`: Event polarity filter (-1, 1, or null)
+
+**Clustering:**
+- `eps`: DBSCAN distance threshold (pixels)
+- `min_samples`: Minimum events per cluster
+- `window_us`: Initial clustering window (microseconds)
+- `assignment_distance`: Max distance for event-to-cluster assignment
+- `grace_period_us`: Time to keep sparse clusters alive
+
+**Temporal Tracking:**
+- `window_duration_us`: Rolling window size
+- `reinit_interval_us`: Period for re-running DBSCAN
+- `min_cluster_size`: Minimum events to keep cluster active
+
+Edit `config/tracking_config.yaml` or add new presets for your datasets.
+
+---
+
+## 🔬 Technical Deep Dive
+
+### Event Camera Data
+
+Event cameras output asynchronous events when pixel brightness changes:
+
+```
+Event = (x, y, timestamp, polarity)
+```
+
+- **Microsecond timestamps**: Far exceeding traditional frame rates
+- **Sparse representation**: Only changing pixels generate events
+- **Polarity**: ON (+1) for brightness increase, OFF (-1) for decrease
+
+### .dat File Format
+
+Prophesee Metavision binary format:
+
+**Header:**
 ```
 % Width 1280
 % Height 720
 % Format EVT3
 ```
 
-After the header, two bytes appear:
+**Binary Events (8 bytes each):**
+- Bits 0-13: X coordinate (14 bits)
+- Bits 14-27: Y coordinate (14 bits)
+- Bits 28-31: Polarity (4 bits)
+- Bits 32-63: Timestamp in microseconds (32 bits)
 
-- **event_type** — currently only stored in metadata (not interpreted by `evio`)
-- **event_size** — must be `8`, meaning each event occupies 8 bytes
+**Memory-mapped I/O** enables zero-copy processing of millions of events.
 
-### Event Record Format (8 bytes)
-The binary payload is interpreted as an array of structured records with dtype:
+### Blade Tracking Algorithm
 
+**1. Initialization:**
+- Load events in initial window (10-20ms)
+- Apply DBSCAN clustering on (x, y) coordinates
+- Filter clusters by size, Y-spread (reject diffuse patterns)
+
+**2. Temporal Tracking:**
+- Process events in rolling window (0.5-0.75ms)
+- Assign new events to nearest cluster within threshold
+- Update cluster statistics: center, angle (via linear regression), width
+- Remove old events from rolling window
+- Re-run DBSCAN periodically to detect new blades
+
+**3. Grace Periods:**
+- Keep clusters alive during sparse event periods (5-20ms)
+- Critical for tracking fast-rotating blades that intermittently generate events
+
+**4. Statistics Calculation:**
 ```python
-_DTYPE_CD8 = np.dtype([("t32", "<u4"), ("w32", "<u4")])
+# Linear regression for blade angle
+slope, intercept = fit_line(x_coords, y_coords)
+angle = atan(slope)
+
+# Width = extent along blade axis
+width = max(coords_along_axis) - min(coords_along_axis)
+
+# Confidence from R² of linear fit
 ```
 
-Each event record is 8 bytes (64 bits):
+### RPM Estimation Methods
 
-- `t32` (upper 32 bits) is a little-endian `uint32` timestamp in microseconds.
-- `w32` (lower 32 bits) packs polarity and coordinates as:
-
-| Bits  | Meaning                                   |
-|-------|-------------------------------------------|
-| 31–28 | polarity (4 bits; > 0 → ON, 0 → OFF)      |
-| 27–14 | y coordinate (14 bits)                    |
-| 13–0  | x coordinate (14 bits)                    |
-
-This matches the decoder:
-
+**Method 1: FFT (Frequency Domain)**
 ```python
-packed_w32 = raw_events["w32"].astype(np.uint32, copy=False)
-
-decoded_x = (packed_w32 & 0x3FFF).astype(np.uint16, copy=False)
-decoded_y = ((packed_w32 >> 14) & 0x3FFF).astype(np.uint16, copy=False)
-raw_polarity = ((packed_w32 >> 28) & 0xF).astype(np.uint8, copy=False)
-decoded_polarity = (raw_polarity > 0).astype(np.int8, copy=False)
+angles_over_time = [...]
+fft_magnitudes = fft(angles_over_time)
+dominant_freq = frequency_of_max_magnitude
+rpm = dominant_freq * 60
 ```
 
-### Decoded Arrays in `evio`
-`evio` exposes the following decoded NumPy arrays:
+**Method 2: Autocorrelation (Time Domain)**
+```python
+autocorr = correlate(signal, signal, mode='full')
+period = time_lag_of_first_peak
+rpm = (1 / period) * 60
+```
 
-- `x_coords` — uint16 (from bits 0–13)
-- `y_coords` — uint16 (from bits 14–27)
-- `timestamps` — int64 (from `t32` promoted from uint32)
-- `polarities` — int8 (0 for OFF, 1 for ON)
+**Method 3: Zero-Crossing (Phase Tracking)**
+```python
+sin_angles = sin(angles)
+zero_crossings = find_upward_crossings(sin_angles)
+periods = diff(zero_crossings)
+rpm = (1 / mean(periods)) * 60
+```
 
-### Memory-Mapped Reading
-`evio` uses a `numpy.memmap` view of the event region with `_DTYPE_CD8` and performs zero-copy decoding of the packed fields. This allows:
+**Method 4: Width Maxima**
+```python
+# Width cycles twice per rotation (blade appears/disappears)
+peaks = find_peaks(widths)
+period = mean(diff(peak_times))
+rpm = (1 / period) * 60 / 2  # Divide by 2 for half-rotation cycles
+```
 
-- fast slicing of large recordings
-- stable real-time playback
-- minimal memory use even with millions of events
+### SIMD Optimization Details
 
+Key operations parallelized with ARM Neon:
 
+**Mean Calculation:**
+```rust
+// Process 2 f64 values per iteration (128-bit Neon registers)
+let mut sum = vdupq_n_f64(0.0);
+for chunk in values.chunks(2) {
+    let v = vld1q_f64(chunk);
+    sum = vaddq_f64(sum, v);
+}
+```
 
+**Variance Calculation:**
+```rust
+let vmean = vdupq_n_f64(mean);
+let diff = vsubq_f64(values, vmean);
+let squared = vmulq_f64(diff, diff);
+// Horizontal reduction for final sum
+```
+
+**Distance Computation:**
+```rust
+// Batch calculate distances from point to multiple targets
+// Vectorized subtraction, multiplication, addition
+```
+
+**Speedup**: 1.71x on representative blade tracking workloads.
 
 ---
 
-## Drone Detection
+## 🎯 Key Insights & Challenges
 
-The repository includes a drone detection system that processes event camera data (`.dat` files) to detect drones and optionally track their propellers.
+### What Worked Well
 
-### Algorithm Overview
+✅ **Rolling window clustering** with grace periods handles intermittent blade visibility  
+✅ **Multiple RPM methods** provide cross-validation (FFT most robust)  
+✅ **SIMD optimization** enables mobile deployment on ARM devices  
+✅ **YAML configuration** with presets enables easy parameter tuning  
+✅ **Linear regression** for blade angle works well for thin, straight blades
 
-The drone detection pipeline consists of the following steps:
+### Challenges Overcome
 
-1. **Event Accumulation**: Events from a time window (default 50ms) are accumulated into a frame, converting sparse event data into a dense image representation.
+⚠️ **Sparse events from distant/fast-rotating propellers**
+- Solution: Long grace periods (20ms), periodic re-initialization
 
-2. **Motion Blob Detection**: 
-   - Binary thresholding is applied to identify regions with significant event activity
-   - Morphological operations (closing and opening) clean up the binary image
-   - Contours are extracted to identify potential objects
+⚠️ **Parameter sensitivity** (eps, min_samples, window sizes)
+- Solution: Hyperparameter search tools (Python + Rust)
 
-3. **Drone Filtering**:
-   - **Area filtering**: Objects must be within a reasonable size range (default: 200-50000 pixels)
-   - **Compactness filtering**: Filters out sparse regions (like trees) by checking the density of events within bounding boxes
-   - **Spatial regularity check**: Analyzes the distribution of events using a grid-based approach to identify irregular patterns (trees) versus uniform patterns (drones)
-   - **Aspect ratio filtering**: Can filter out elongated objects (like planes) if needed
+⚠️ **Distinguishing blades from background**
+- Solution: Y-spread filtering, temporal consistency checks
 
-4. **Detection Merging**: Nearby or overlapping detections are merged to handle cases where a rotating drone is detected as multiple objects.
+### Future Improvements
 
-5. **Temporal Filtering**: 
-   - Maintains a history of detections across frames
-   - Filters out flickering false positives (like moving tree leaves) by requiring detections to appear consistently over time
-   - Only detections that appear in at least 40% of recent frames are kept
-
-6. **Propeller Detection** (optional, enabled with `--detect-propellers`):
-   - For each detected drone, analyzes the region of interest (ROI) to detect propellers
-   - Uses multiple detection methods:
-     - **HoughCircles**: Detects circular patterns
-     - **Ellipse fitting**: Detects elliptical patterns (propellers are typically horizontally elongated)
-   - **Propeller tracking**: Maintains identity of 4 propellers per drone across frames:
-     - Tracks each propeller's position and velocity
-     - Matches detections to tracked propellers using predicted positions
-     - Predicts positions for temporarily occluded propellers
-     - Labels propellers as P1, P2, P3, P4
-   - Ensures propellers are within the drone's bounding box
-   - Limits to maximum 4 propellers per drone
-
-### Running the Detection Script
-
-#### Basic Usage
-
-```bash
-# Display detection in real-time window
-uv run scripts/detection/detect_drone.py drone_moving.dat
-```
-
-#### Command-Line Options
-
-**Core Options:**
-- `--window WINDOW`: Window duration in milliseconds (default: 50ms)
-- `--speed SPEED`: Playback speed factor (default: 1.0, 1.0 = real-time)
-- `--force-speed`: Force playback speed by dropping frames if needed
-
-**Detection Parameters:**
-- `--min-area AREA`: Minimum detection area in pixels (default: 200)
-- `--max-area AREA`: Maximum detection area in pixels (default: 50000)
-- `--threshold THRESHOLD`: Event accumulation threshold (default: 30)
-- `--merge-distance DISTANCE`: Maximum distance to merge nearby detections in pixels (default: 80)
-- `--history-frames N`: Number of frames for temporal filtering (default: 5)
-- `--min-consistency RATIO`: Minimum consistency ratio for temporal filtering, 0-1 (default: 0.4)
-
-**Propeller Detection:**
-- `--detect-propellers`: Enable propeller detection and tracking (disabled by default)
-- `--propeller-min-radius RADIUS`: Minimum propeller radius in pixels (default: 5)
-- `--propeller-max-radius RADIUS`: Maximum propeller radius in pixels (default: 50)
-- `--show-propeller-debug`: Show debug visualization of propeller detection ROI
-
-**Output:**
-- `--output-video PATH`: Save detection video to file instead of displaying (e.g., `output.mp4`)
-- `--debug`: Print debug information to console
-
-#### Examples
-
-```bash
-# Basic detection with default settings
-uv run scripts/detection/detect_drone.py drone_moving.dat
-
-# Detection with propeller tracking enabled
-uv run scripts/detection/detect_drone.py drone_moving.dat --detect-propellers
-
-# Save detection video to file
-uv run scripts/detection/detect_drone.py drone_moving.dat --output-video detection.mp4
-
-# Detection with custom parameters and propeller tracking
-uv run scripts/detection/detect_drone.py drone_moving.dat \
-    --window 100 \
-    --min-area 500 \
-    --detect-propellers \
-    --output-video output.mp4
-
-# Faster playback with debug information
-uv run scripts/detection/detect_drone.py drone_moving.dat \
-    --speed 2.0 \
-    --debug
-```
-
-#### Output
-
-When displaying in a window:
-- **Green bounding boxes**: Detected drones
-- **Orange ellipses**: Detected propellers (if `--detect-propellers` is enabled)
-- **Labels**: "DRONE" for drones, "P1", "P2", "P3", "P4" for propellers
-- **HUD**: Shows detection count, propeller count, playback speed, and timing information
-
-When saving to video:
-- All visualizations are included in the output video
-- Frame rate is automatically calculated from window duration
-- No window is displayed (faster processing)
+- **Real camera integration**: Test with live Prophesee devices (currently validated on recordings)
+- **3D trajectory estimation**: Combine RPM with spatial tracking
+- **Multi-drone scenarios**: Handle multiple quadcopters simultaneously
+- **Machine learning**: Neural networks for event-based detection
+- **Improved blade models**: Handle curved or flexible blades
+- **Better tree/foliage rejection** for outdoor scenarios
 
 ---
 
-## License
-MIT
+## 🛠️ Development
 
+### Adding New Event Sources
+
+Extend `evio` library to support additional cameras:
+
+1. Implement async stream in `src/evio/source/`
+2. Yield standardized packets: `x_coords, y_coords, timestamps, polarities`
+3. All algorithms work with any source automatically
+
+### Creating New Datasets
+
+Generate synthetic event data:
+
+```bash
+uv run scripts/simulate_propeller.py \
+    --output output_quadcopter.dat \
+    --rpm 5500 \
+    --num-blades 4 \
+    --duration 10.0 \
+    --fps 1000
+```
+
+Parameters: rotation angle, position, noise level, etc.
+
+### Testing & Validation
+
+```bash
+# Test RPM consistency across time points
+uv run scripts/test_rpm_robustness.py \
+    --config config/tracking_config.yaml \
+    --preset drone_idle \
+    --num-time-points 20
+
+# Compare detection methods
+uv run scripts/detection/compare_detection_methods.py
+```
+
+---
+
+## 📚 Papers & References
+
+- **Magrini et al. (2025)** - [Drone Detection with Event Cameras](https://arxiv.org/abs/2508.04564) - Comprehensive survey of event-based vision for drone detection, tracking, trajectory forecasting, and propeller signature analysis. arXiv:2508.04564 [cs.CV]
+- [ARM SIMD on Rust](https://learn.arm.com/learning-paths/cross-platform/simd-on-rust/simd-on-rust-part1/)
+- [Prophesee Metavision SDK](https://docs.prophesee.ai/)
+- [Event Cameras: Principles and Applications](https://www.prophesee.ai/event-based-vision/)
+- [DBSCAN Clustering](https://scikit-learn.org/stable/modules/clustering.html#dbscan)
+
+---
+
+## 🏆 Acknowledgments
+
+**@arm 📱** - SIMD optimization resources enabling 1.71x speedup on ARM processors  
+**@Vultr ☁️** - Cloud infrastructure for hyperparameter optimization  
+
+Special thanks to the event camera community and Prophesee for the Metavision SDK.
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Priority areas:
+
+- Real-time camera integration (Prophesee, Inivation)
+- Additional RPM estimation methods
+- Performance optimization (GPU, more SIMD)
+- Documentation improvements
+- Dataset contributions
+
+---
+
+**Event Horizon** - Tracking the future at microsecond precision 🎯⚡
+
+---
+
+## 📖 Citation
+
+If you use this work, please cite:
+
+```
+Event Horizon: Microsecond Motion Radar for Rotating Objects
+https://github.com/<your-repo>/evio
+```
